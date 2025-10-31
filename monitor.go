@@ -326,6 +326,8 @@ func (m *Monitor) handleCheckResult(result URLCheckResult) {
 					// Record this match in persistent state
 					if m.state != nil {
 						m.state.RecordMatch(matchHash, result.URL, result.Date, result.Time, result.Address)
+						// Save state immediately after sending email (don't wait for 5min ticker)
+						go m.saveState()
 					}
 				}
 			}
@@ -813,6 +815,8 @@ func (m *Monitor) handleConnectionFailure(result URLCheckResult) {
 		if m.canSendErrorEmail(result.URL) {
 			m.sendErrorEmail(result.URL, result.Name, result.Error)
 			m.recordErrorEmail(result.URL)
+			// Save state immediately after sending error email
+			go m.saveState()
 		}
 	}
 }
@@ -839,6 +843,8 @@ func (m *Monitor) handleConnectionRecovery(result URLCheckResult) {
 		if m.canSendErrorEmail(result.URL) {
 			m.sendRecoveryEmail(result.URL, result.Name, duration)
 			m.recordErrorEmail(result.URL)
+			// Save state immediately after sending recovery email
+			go m.saveState()
 		}
 	}
 }
