@@ -15,7 +15,6 @@ import (
 // UserAgentManager handles rotating User-Agent strings
 type UserAgentManager struct {
 	agents        []string
-	currentIndex  int
 	mu            sync.RWMutex
 	fallbackAgent string
 }
@@ -31,9 +30,11 @@ const userAgentSourceURL = "https://raw.githubusercontent.com/microlinkhq/top-us
 
 // NewUserAgentManager creates a new User-Agent manager with fallback
 func NewUserAgentManager() *UserAgentManager {
+	// Seed random number generator for User-Agent selection
+	rand.Seed(time.Now().UnixNano())
+	
 	return &UserAgentManager{
 		agents:        []string{defaultUserAgent},
-		currentIndex:  0,
 		fallbackAgent: defaultUserAgent,
 	}
 }
@@ -104,7 +105,6 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 	
 	uam.mu.Lock()
 	uam.agents = selectedAgents
-	uam.currentIndex = 0
 	uam.mu.Unlock()
 
 	log.Printf("✅ User-Agent pool ready with %d agents", len(selectedAgents))
@@ -175,19 +175,25 @@ func (uam *UserAgentManager) selectUserAgents(agents []string, count int) []stri
 	return selected
 }
 
-// GetNext returns the next User-Agent in rotation
+// GetNext returns a random User-Agent from the top half (most popular)
 func (uam *UserAgentManager) GetNext() string {
-	uam.mu.Lock()
-	defer uam.mu.Unlock()
+	uam.mu.RLock()
+	defer uam.mu.RUnlock()
 	
 	if len(uam.agents) == 0 {
 		return uam.fallbackAgent
 	}
 	
-	agent := uam.agents[uam.currentIndex]
-	uam.currentIndex = (uam.currentIndex + 1) % len(uam.agents)
+	// Use top half of agents (most popular browsers)
+	// This provides good realism since top agents are most common in real traffic
+	topHalfSize := len(uam.agents) / 2
+	if topHalfSize < 1 {
+		topHalfSize = len(uam.agents) // If only 1-2 agents, use all
+	}
 	
-	return agent
+	// Randomly select from top half
+	randomIndex := rand.Intn(topHalfSize)
+	return uam.agents[randomIndex]
 }
 
 // sendFetchFailureEmail notifies admin about User-Agent fetch failure
