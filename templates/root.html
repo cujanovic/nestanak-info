@@ -251,6 +251,14 @@
 				<span class="stat-value">{{.Interval}} seconds</span>
 			</div>
 			<div class="stat-row">
+				<span class="stat-label">Last Check</span>
+				<span class="stat-value">{{.LastCheck}}</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">Next Check</span>
+				<span class="stat-value">{{.NextCheck}}</span>
+			</div>
+			<div class="stat-row">
 				<span class="stat-label">Email Limit per URL</span>
 				<span class="stat-value">{{.MaxEmailsPerDay}}/day</span>
 			</div>
@@ -268,6 +276,10 @@
 							{{range .SearchTerms}}
 							<span class="term-tag" style="display: inline-block; background: #404040; color: #b0b0b0; padding: 3px 8px; border-radius: 6px; margin: 2px; font-size: 10px;">{{.}}</span>
 							{{end}}
+						</div>
+						<div style="margin-top: 6px; font-size: 10px; color: #666;">
+							<div>🕐 Last: {{.LastCheck}}</div>
+							<div>⏰ Next: {{.NextCheck}}</div>
 						</div>
 					</div>
 					<div class="url-status">
@@ -299,6 +311,33 @@
 						{{else}}
 						<span style="color: #FF9800; font-size: 11px; display: block; margin-top: 4px;">⚠ Ongoing</span>
 						{{end}}
+					</div>
+				</div>
+				{{end}}
+			</div>
+		</div>
+		{{end}}
+		
+		{{if .EmailNotifications}}
+		<div class="urls" style="margin-top: 30px;">
+			<h2 style="color: #e0e0e0; font-size: 18px; margin: 30px 0 15px 0;">📧 Recent Email Notifications</h2>
+			<div class="urls-list" style="max-height: 300px;">
+				{{range .EmailNotifications}}
+				<div class="url-item" style="background: {{if eq .Type "match"}}#1a2a3a{{else if eq .Type "error"}}#3a1a1a{{else}}#1a3a1a{{end}}; border-left: 3px solid {{if eq .Type "match"}}#2196F3{{else if eq .Type "error"}}#f44336{{else}}#4CAF50{{end}}; padding-left: 12px;">
+					<div class="url-info" style="width: 100%;">
+						<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+							<span style="color: #999; font-size: 11px;">{{.Timestamp.Format "2006-01-02 15:04:05"}}</span>
+							<span class="badge" style="background: {{if eq .Type "match"}}#2196F3{{else if eq .Type "error"}}#f44336{{else}}#4CAF50{{end}};">
+								{{if eq .Type "match"}}🔔 Match{{else if eq .Type "error"}}⚠️ Error{{else}}✅ Recovery{{end}}
+							</span>
+						</div>
+						<div style="color: #e0e0e0; font-size: 13px; margin-bottom: 4px; font-weight: 500;">{{.Subject}}</div>
+						{{if .URLName}}
+						<div style="color: #999; font-size: 11px; margin-bottom: 4px;">📍 {{.URLName}}</div>
+						{{end}}
+						<div style="color: #81c784; font-size: 11px;">
+							📧 Sent to: {{range $i, $r := .Recipients}}{{if $i}}, {{end}}{{$r}}{{end}}
+						</div>
 					</div>
 				</div>
 				{{end}}

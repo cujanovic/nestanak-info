@@ -27,6 +27,7 @@ type Monitor struct {
 	unreachableURLs          map[string]bool         // Track URLs that are down
 	lastURLDownTime          map[string]time.Time    // When URL went down
 	recentEvents             *CircularBuffer
+	recentEmailNotifications []EmailNotification     // Track recent email notifications
 	asyncLogger              *AsyncLogger
 	workerPool               *WorkerPool
 	dnsCache                 *DNSCache               // DNS resolution cache
@@ -34,6 +35,9 @@ type Monitor struct {
 	sessionManager           *SessionManager
 	templates                *template.Template
 	statsStartTime           time.Time
+	lastCheckTime            time.Time               // When the last check cycle completed (legacy, for compatibility)
+	perURLCheckTime          map[string]time.Time    // Last check time per URL
+	stopChan                 chan struct{}           // Signal to stop all goroutines
 	mu                       sync.RWMutex
 	emailMu                  sync.Mutex
 }
@@ -73,9 +77,12 @@ func NewMonitor(config Config) *Monitor {
 		unreachableURLs:            make(map[string]bool),
 		lastURLDownTime:            make(map[string]time.Time),
 		recentEvents:               NewCircularBuffer(config.RecentEventsBufferSize),
+		recentEmailNotifications:   make([]EmailNotification, 0, 100), // Keep last 100 email notifications
 		workerPool:                 NewWorkerPool(config.MaxConcurrentChecks),
 		dnsCache:                   dnsCache,
 		statsStartTime:             time.Now(),
+		perURLCheckTime:            make(map[string]time.Time),
+		stopChan:                   make(chan struct{}),
 	}
 
 	// Initialize async logger
@@ -101,13 +108,14 @@ func NewMonitor(config Config) *Monitor {
 	return m
 }
 
-// Start starts the monitoring service
+// Start starts the monitoring service with independent goroutines per URL
 func (m *Monitor) Start() {
 	m.addLog("🎯 Nestanak-Info Service Started")
-	log.Printf("🔍 Monitoring %d URLs", len(m.config.URLConfigs))
+	log.Printf("🔍 Monitoring %d URLs with independent check goroutines", len(m.config.URLConfigs))
 	log.Printf("📧 Sending alerts to %d recipients", len(m.config.Recipients))
 	log.Printf("🚫 Email limit: %d per URL per day", m.config.MaxEmailsPerURLPerDay)
 	log.Printf("🌐 DNS cache TTL: %d minutes", m.config.DNSCacheTTLMinutes)
+	log.Printf("⏱️  Check interval: %d seconds per URL", m.config.CheckIntervalSeconds)
 	
 	// Log state statistics
 	if m.state != nil {
@@ -122,32 +130,37 @@ func (m *Monitor) Start() {
 		m.startHTTPServer()
 	}
 
-	// Start the check loop
-	ticker := time.NewTicker(time.Duration(m.config.CheckIntervalSeconds) * time.Second)
-	defer ticker.Stop()
+	// Start independent goroutine for each URL with staggered timing
+	var wg sync.WaitGroup
+	for i, urlConfig := range m.config.URLConfigs {
+		wg.Add(1)
+		go m.monitorURL(urlConfig, i, &wg)
+	}
 
 	// Start state persistence ticker (every 5 minutes)
 	stateTicker := time.NewTicker(5 * time.Minute)
 	defer stateTicker.Stop()
 
-	// Run initial check
-	m.checkAllURLs()
-
 	// Start DNS cache cleanup ticker (every 10 minutes)
 	cleanupTicker := time.NewTicker(10 * time.Minute)
 	defer cleanupTicker.Stop()
 
-	// Run periodic checks
-	for {
-		select {
-		case <-ticker.C:
-			m.checkAllURLs()
-		case <-cleanupTicker.C:
-			m.dnsCache.CleanupExpired()
-		case <-stateTicker.C:
-			m.saveState()
+	// Background maintenance tasks
+	go func() {
+		for {
+			select {
+			case <-stateTicker.C:
+				m.saveState()
+			case <-cleanupTicker.C:
+				m.dnsCache.CleanupExpired()
+			case <-m.stopChan:
+				return
+			}
 		}
-	}
+	}()
+
+	// Wait for all URL monitors to finish (they run forever until stopChan is closed)
+	wg.Wait()
 }
 
 // saveState persists current state to disk
@@ -170,18 +183,58 @@ func (m *Monitor) saveState() {
 	}
 }
 
-// checkAllURLs checks all configured URLs for search terms
-func (m *Monitor) checkAllURLs() {
-	log.Printf("🔍 Starting URL check cycle...")
-	m.addLog("Starting URL check cycle")
+// monitorURL runs an independent check loop for a single URL
+func (m *Monitor) monitorURL(urlConfig URLConfig, index int, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	for _, urlConfig := range m.config.URLConfigs {
-		urlConfig := urlConfig // capture for goroutine
-		m.workerPool.Submit(func() {
-			result := m.checkURL(urlConfig)
-			m.handleCheckResult(result)
-		})
+	// Calculate staggered start delay to distribute checks
+	// Spread URLs evenly across the check interval
+	intervalDuration := time.Duration(m.config.CheckIntervalSeconds) * time.Second
+	staggerDelay := (intervalDuration / time.Duration(len(m.config.URLConfigs))) * time.Duration(index)
+	
+	displayName := urlConfig.Name
+	if displayName == "" {
+		displayName = urlConfig.URL
 	}
+	
+	log.Printf("🔄 URL monitor starting for '%s' (stagger: %v)", displayName, staggerDelay)
+	
+	// Initial staggered delay
+	select {
+	case <-time.After(staggerDelay):
+	case <-m.stopChan:
+		return
+	}
+
+	// Run first check immediately after stagger
+	m.checkSingleURL(urlConfig)
+
+	// Set up ticker for periodic checks
+	ticker := time.NewTicker(intervalDuration)
+	defer ticker.Stop()
+
+	// Check loop
+	for {
+		select {
+		case <-ticker.C:
+			m.checkSingleURL(urlConfig)
+		case <-m.stopChan:
+			log.Printf("🛑 Stopping monitor for '%s'", displayName)
+			return
+		}
+	}
+}
+
+// checkSingleURL checks a single URL and handles the result
+func (m *Monitor) checkSingleURL(urlConfig URLConfig) {
+	result := m.checkURL(urlConfig)
+	m.handleCheckResult(result)
+	
+	// Update per-URL check time
+	m.mu.Lock()
+	m.perURLCheckTime[urlConfig.URL] = time.Now()
+	m.lastCheckTime = time.Now() // Also update legacy field for compatibility
+	m.mu.Unlock()
 }
 
 // checkURL checks a single URL for search terms
@@ -918,6 +971,7 @@ This URL is currently unreachable. You will receive a recovery notification when
 		log.Printf("Failed to send error email to %s: %v", m.config.ErrorRecipient, sendErr)
 	} else {
 		log.Printf("📧 Error notification sent to %s for %s", m.config.ErrorRecipient, displayName)
+		m.recordEmailNotification(url, name, []string{m.config.ErrorRecipient}, "error", subject)
 	}
 }
 
@@ -943,6 +997,52 @@ The URL is now reachable again and monitoring has resumed.`, displayName, url, f
 		log.Printf("Failed to send recovery email to %s: %v", m.config.ErrorRecipient, sendErr)
 	} else {
 		log.Printf("📧 Recovery notification sent to %s for %s", m.config.ErrorRecipient, displayName)
+		m.recordEmailNotification(url, name, []string{m.config.ErrorRecipient}, "recovery", subject)
 	}
+}
+
+// recordEmailNotification records an email notification for display in web UI
+func (m *Monitor) recordEmailNotification(url, name string, recipients []string, emailType, subject string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	notification := EmailNotification{
+		Timestamp:  time.Now(),
+		Recipients: recipients,
+		URL:        url,
+		URLName:    name,
+		Type:       emailType,
+		Subject:    subject,
+	}
+
+	m.recentEmailNotifications = append(m.recentEmailNotifications, notification)
+
+	// Keep only last 100 notifications
+	if len(m.recentEmailNotifications) > 100 {
+		m.recentEmailNotifications = m.recentEmailNotifications[len(m.recentEmailNotifications)-100:]
+	}
+}
+
+// getRecentEmailNotifications returns recent email notifications for display
+func (m *Monitor) getRecentEmailNotifications(limit int) []EmailNotification {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if len(m.recentEmailNotifications) == 0 {
+		return []EmailNotification{}
+	}
+
+	// Return last N notifications (most recent first)
+	notifications := make([]EmailNotification, 0)
+	start := len(m.recentEmailNotifications) - limit
+	if start < 0 {
+		start = 0
+	}
+
+	for i := len(m.recentEmailNotifications) - 1; i >= start; i-- {
+		notifications = append(notifications, m.recentEmailNotifications[i])
+	}
+
+	return notifications
 }
 

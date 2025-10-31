@@ -142,6 +142,21 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	uptime := time.Since(m.statsStartTime)
+	
+	// Get last check time and calculate next check
+	m.mu.RLock()
+	lastCheck := m.lastCheckTime
+	m.mu.RUnlock()
+	
+	var lastCheckStr, nextCheckStr string
+	if !lastCheck.IsZero() {
+		lastCheckStr = m.formatLocalTime(lastCheck)
+		nextCheck := lastCheck.Add(time.Duration(m.config.CheckIntervalSeconds) * time.Second)
+		nextCheckStr = m.formatLocalTime(nextCheck)
+	} else {
+		lastCheckStr = "In progress..."
+		nextCheckStr = "After current check"
+	}
 
 	// Build URL status list
 	type URLInfo struct {
@@ -151,6 +166,8 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 		IsUnreachable bool
 		ShortURL      string
 		SearchTerms   []string
+		LastCheck     string
+		NextCheck     string
 	}
 
 	m.mu.RLock()
@@ -164,6 +181,18 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = shortURL
 		}
+		
+		// Get per-URL check time
+		var lastCheckStr, nextCheckStr string
+		if lastCheck, exists := m.perURLCheckTime[urlConfig.URL]; exists {
+			lastCheckStr = m.formatLocalTime(lastCheck)
+			nextCheck := lastCheck.Add(time.Duration(m.config.CheckIntervalSeconds) * time.Second)
+			nextCheckStr = m.formatLocalTime(nextCheck)
+		} else {
+			lastCheckStr = "Pending..."
+			nextCheckStr = "Soon..."
+		}
+		
 		urlList[i] = URLInfo{
 			URL:           urlConfig.URL,
 			Name:          name,
@@ -171,31 +200,42 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 			IsUnreachable: m.unreachableURLs[urlConfig.URL],
 			ShortURL:      shortURL,
 			SearchTerms:   urlConfig.SearchTerms,
+			LastCheck:     lastCheckStr,
+			NextCheck:     nextCheckStr,
 		}
 	}
 	m.mu.RUnlock()
 
 	// Get recent matches
 	matches := m.getRecentMatches()
+	
+	// Get recent email notifications (last 20)
+	emailNotifications := m.getRecentEmailNotifications(20)
 
 	data := struct {
-		URLCount         int
-		Uptime           string
-		Interval         int
-		Timestamp        string
-		URLs             []URLInfo
-		RecentMatches    []IncidentInfo
-		MatchesHours     int
-		MaxEmailsPerDay  int
+		URLCount           int
+		Uptime             string
+		Interval           int
+		Timestamp          string
+		LastCheck          string
+		NextCheck          string
+		URLs               []URLInfo
+		RecentMatches      []IncidentInfo
+		EmailNotifications []EmailNotification
+		MatchesHours       int
+		MaxEmailsPerDay    int
 	}{
-		URLCount:        len(m.config.URLConfigs),
-		Uptime:          formatDuration(uptime),
-		Interval:        m.config.CheckIntervalSeconds,
-		Timestamp:       m.formatLocalTime(time.Now()),
-		URLs:            urlList,
-		RecentMatches:   matches,
-		MatchesHours:    m.config.RecentMatchesHours,
-		MaxEmailsPerDay: m.config.MaxEmailsPerURLPerDay,
+		URLCount:           len(m.config.URLConfigs),
+		Uptime:             formatDuration(uptime),
+		Interval:           m.config.CheckIntervalSeconds,
+		Timestamp:          m.formatLocalTime(time.Now()),
+		LastCheck:          lastCheckStr,
+		NextCheck:          nextCheckStr,
+		URLs:               urlList,
+		RecentMatches:      matches,
+		EmailNotifications: emailNotifications,
+		MatchesHours:       m.config.RecentMatchesHours,
+		MaxEmailsPerDay:    m.config.MaxEmailsPerURLPerDay,
 	}
 
 	if err := m.templates.ExecuteTemplate(w, "root.html", data); err != nil {

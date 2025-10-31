@@ -60,17 +60,24 @@ Na adresama: %s`, result.Date, result.Time, result.Address)
 	}
 
 	// Send to all recipients with delay between sends
+	sentTo := make([]string, 0)
 	for i, recipient := range m.config.Recipients {
 		if err := sendBrevoEmail(m.config, recipient, subject, body); err != nil {
 			log.Printf("Failed to send email to %s: %v", recipient, err)
 		} else {
 			log.Printf("📧 Email sent to %s", recipient)
+			sentTo = append(sentTo, recipient)
 		}
 		
 		// Add delay between emails (except after the last one)
 		if i < len(m.config.Recipients)-1 {
 			time.Sleep(1 * time.Second)
 		}
+	}
+
+	// Record notification if any emails were sent
+	if len(sentTo) > 0 {
+		m.recordEmailNotification(result.URL, result.Name, sentTo, "match", subject)
 	}
 
 	return nil

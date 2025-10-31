@@ -94,6 +94,16 @@ type IncidentInfo struct {
 	Duration    string
 }
 
+// EmailNotification represents an email that was sent
+type EmailNotification struct {
+	Timestamp  time.Time
+	Recipients []string
+	URL        string
+	URLName    string
+	Type       string // "match", "error", "recovery"
+	Subject    string
+}
+
 // DNSCacheEntry holds cached DNS resolution with expiry
 type DNSCacheEntry struct {
 	ResolvedIP  string    // The resolved IP address
