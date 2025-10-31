@@ -4,6 +4,8 @@ A monitoring service that checks URLs for specific search terms and sends email 
 
 ## Features
 
+- **State Persistence**: Survives restarts - remembers sent emails and seen incidents
+- **Smart Deduplication**: Won't send duplicate emails for the same incident (7-day window)
 - **Per-URL Configuration**: Each URL has its own search terms - perfect for monitoring different services
 - **Granular Search Terms**: Power URLs can search for "Земун" while water URLs search for "Водовод"
 - **Timezone Support**: Configure time offset so all displayed times match your local timezone
@@ -95,6 +97,12 @@ Edit `/opt/nestanak-info/config.json`:
   - Higher number = more diversity, less predictable pattern
   - Lower number = simpler rotation, faster startup
   - Max 100 (uses all available agents from source)
+- `state_file_path`: Path to persistent state file (default: `state.json`)
+  - Relative path resolves to `/opt/nestanak-info/state.json`
+  - Stores email counts, seen matches (with hashes), and alert times
+  - Survives service restarts, system reboots, and updates
+  - Prevents duplicate emails for same incident across restarts
+  - Auto-cleanup of old data (>24h for email counts, >7d for match history)
 
 #### Per-URL Configuration
 Each URL can have its own configuration:
@@ -220,6 +228,57 @@ This will remove:
 - The service user
 - The installation directory
 - Log files
+
+## State Persistence & Deduplication
+
+The service maintains persistent state across restarts to prevent duplicate emails and respect rate limits:
+
+### What Gets Persisted
+
+1. **Email Send Counts**: Tracks emails sent per URL in the last 24 hours
+   - Respects `max_emails_per_url_per_day` limit even after restart
+   - Example: If 2 emails sent before restart, won't send 2 more after restart
+
+2. **Seen Matches (Content Hashing)**: Tracks unique incidents for 7 days
+   - Each incident is hashed: SHA256(URL + Date + Time + Address)
+   - Same outage on same date/time = same hash = no duplicate email
+   - Example: If same "2024-10-31, 08:00-16:00, Ulica XYZ" appears after restart, won't email again
+
+3. **Alert Cooldown Times**: Remembers when last alert was sent per URL
+   - Prevents rapid-fire alerts even after restart
+
+4. **Error Email Counts**: Tracks connection error emails per URL (max 3/day)
+
+### State File Example
+
+```json
+{
+  "seen_matches": {
+    "a3f4e2...": {
+      "first_seen": "2024-10-31T10:30:00Z",
+      "last_notified": "2024-10-31T10:30:00Z",
+      "count": 1,
+      "date": "2024-10-31",
+      "time": "08:00-16:00",
+      "address": "Ulica Braće Jerković 1-100",
+      "url": "https://elektrodistribucija.rs/..."
+    }
+  },
+  "emails_sent_per_url_today": {
+    "https://elektrodistribucija.rs/...": [
+      "2024-10-31T10:30:00Z",
+      "2024-10-31T14:20:00Z"
+    ]
+  }
+}
+```
+
+### Automatic State Management
+
+- **Auto-save**: Every 5 minutes
+- **Auto-cleanup**: Old data removed (>24h for emails, >7d for matches)
+- **Corruption handling**: If state file corrupted, backed up and started fresh
+- **Graceful degradation**: If state file missing/unreadable, starts with empty state
 
 ## How It Works
 

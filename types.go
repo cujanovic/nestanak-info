@@ -110,3 +110,24 @@ type DNSCache struct {
 	ttl     time.Duration // How long to cache DNS entries
 }
 
+// MatchRecord represents a seen match (for deduplication)
+type MatchRecord struct {
+	FirstSeen    time.Time `json:"first_seen"`
+	LastNotified time.Time `json:"last_notified"`
+	Count        int       `json:"count"`
+	Date         string    `json:"date"`
+	Time         string    `json:"time"`
+	Address      string    `json:"address"`
+	URL          string    `json:"url"`
+}
+
+// ServiceState represents the persistent state across restarts
+type ServiceState struct {
+	EmailsSentPerURLToday      map[string][]time.Time    `json:"emails_sent_per_url_today"`
+	ErrorEmailsSentPerURLToday map[string][]time.Time    `json:"error_emails_sent_per_url_today"`
+	LastAlertTimes             map[string]time.Time      `json:"last_alert_times"` // key: "url|alertType"
+	SeenMatches                map[string]*MatchRecord   `json:"seen_matches"`     // key: content hash
+	LastSaved                  time.Time                 `json:"last_saved"`
+	mu                         sync.RWMutex              `json:"-"`
+}
+

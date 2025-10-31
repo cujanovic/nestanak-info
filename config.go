@@ -47,6 +47,7 @@ type Config struct {
 	BrevoAPIKey             string      `json:"brevo_api_key"`
 	SenderEmail             string      `json:"sender_email"`
 	SenderName              string      `json:"sender_name"`
+	StateFilePath           string      `json:"state_file_path"` // Path to persist state across restarts
 }
 
 // loadConfig loads configuration from a JSON file

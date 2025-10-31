@@ -72,5 +72,6 @@
   "error_recipient": "admin@example.com",
   "brevo_api_key": "YOUR_BREVO_API_KEY_HERE",
   "sender_email": "struja@localdomain.pw",
-  "sender_name": "Struja Notifier"
+  "sender_name": "Struja Notifier",
+  "state_file_path": "state.json"
 }

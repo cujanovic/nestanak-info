@@ -18,10 +18,11 @@ import (
 type Monitor struct {
 	userAgentManager         *UserAgentManager
 	config                   Config
+	state                    *ServiceState           // Persistent state across restarts
 	lastAlertTime            map[AlertKey]time.Time
 	emailsSentThisHour       []time.Time
-	emailsSentPerURLToday    map[string][]time.Time // Track emails per URL per day
-	errorEmailsSentPerURLToday map[string][]time.Time // Track error emails per URL per day
+	emailsSentPerURLToday    map[string][]time.Time // Track emails per URL per day (in-memory, synced with state)
+	errorEmailsSentPerURLToday map[string][]time.Time // Track error emails per URL per day (in-memory, synced with state)
 	foundURLs                map[string]bool
 	unreachableURLs          map[string]bool         // Track URLs that are down
 	lastURLDownTime          map[string]time.Time    // When URL went down
@@ -39,6 +40,9 @@ type Monitor struct {
 
 // NewMonitor creates a new monitor instance
 func NewMonitor(config Config) *Monitor {
+	// Load persistent state
+	state := LoadState(config.StateFilePath)
+	
 	// Create DNS cache
 	dnsCacheTTL := time.Duration(config.DNSCacheTTLMinutes) * time.Minute
 	dnsCache := NewDNSCache(dnsCacheTTL)
@@ -60,10 +64,11 @@ func NewMonitor(config Config) *Monitor {
 	m := &Monitor{
 		userAgentManager:         userAgentManager,
 		config:                     config,
+		state:                      state,
 		lastAlertTime:              make(map[AlertKey]time.Time),
 		emailsSentThisHour:         make([]time.Time, 0),
-		emailsSentPerURLToday:      make(map[string][]time.Time),
-		errorEmailsSentPerURLToday: make(map[string][]time.Time),
+		emailsSentPerURLToday:      state.EmailsSentPerURLToday,      // Initialize from persisted state
+		errorEmailsSentPerURLToday: state.ErrorEmailsSentPerURLToday, // Initialize from persisted state
 		foundURLs:                  make(map[string]bool),
 		unreachableURLs:            make(map[string]bool),
 		lastURLDownTime:            make(map[string]time.Time),
@@ -103,6 +108,13 @@ func (m *Monitor) Start() {
 	log.Printf("📧 Sending alerts to %d recipients", len(m.config.Recipients))
 	log.Printf("🚫 Email limit: %d per URL per day", m.config.MaxEmailsPerURLPerDay)
 	log.Printf("🌐 DNS cache TTL: %d minutes", m.config.DNSCacheTTLMinutes)
+	
+	// Log state statistics
+	if m.state != nil {
+		stats := m.state.GetStats()
+		log.Printf("💾 State loaded: %d seen matches, %d URLs tracked", 
+			stats["seen_matches_count"], stats["urls_tracked"])
+	}
 
 	// Initialize templates if HTTP is enabled
 	if m.config.HTTPEnabled {
@@ -113,6 +125,10 @@ func (m *Monitor) Start() {
 	// Start the check loop
 	ticker := time.NewTicker(time.Duration(m.config.CheckIntervalSeconds) * time.Second)
 	defer ticker.Stop()
+
+	// Start state persistence ticker (every 5 minutes)
+	stateTicker := time.NewTicker(5 * time.Minute)
+	defer stateTicker.Stop()
 
 	// Run initial check
 	m.checkAllURLs()
@@ -128,7 +144,29 @@ func (m *Monitor) Start() {
 			m.checkAllURLs()
 		case <-cleanupTicker.C:
 			m.dnsCache.CleanupExpired()
+		case <-stateTicker.C:
+			m.saveState()
 		}
+	}
+}
+
+// saveState persists current state to disk
+func (m *Monitor) saveState() {
+	if m.state == nil || m.config.StateFilePath == "" {
+		return
+	}
+
+	// Sync in-memory state with persistent state
+	m.emailMu.Lock()
+	m.state.EmailsSentPerURLToday = m.emailsSentPerURLToday
+	m.state.ErrorEmailsSentPerURLToday = m.errorEmailsSentPerURLToday
+	m.emailMu.Unlock()
+
+	// Save to file
+	if err := m.state.SaveState(m.config.StateFilePath); err != nil {
+		log.Printf("⚠️  Failed to save state: %v", err)
+	} else {
+		log.Printf("💾 State saved to %s", m.config.StateFilePath)
 	}
 }
 
@@ -251,36 +289,61 @@ func (m *Monitor) handleCheckResult(result URLCheckResult) {
 	m.foundURLs[result.URL] = result.Found
 	m.mu.Unlock()
 
-	if result.Found && !wasFound {
-		// Terms found for the first time
-		log.Printf("🚨 FOUND: Terms found on %s: %v", result.URL, result.FoundTerms)
-		m.addLog(fmt.Sprintf("FOUND: Terms found on %s: %v", result.URL, result.FoundTerms))
+	if result.Found {
+		// Generate hash from match content (URL + Date + Time + Address)
+		matchHash := GenerateMatchHash(result.URL, result.Date, result.Time, result.Address)
+		
+		// Check if we've already notified about this exact match
+		maxAge := 7 * 24 * time.Hour // Don't send duplicate emails for 7 days
+		alreadySeen := m.state != nil && m.state.IsMatchSeen(matchHash, maxAge)
+		
+		if !wasFound {
+			// Terms found for the first time
+			log.Printf("🚨 FOUND: Terms found on %s: %v", result.URL, result.FoundTerms)
+			log.Printf("   📅 Date: %s, Time: %s, Address: %s", result.Date, result.Time, result.Address)
+			m.addLog(fmt.Sprintf("FOUND: Terms found on %s: %v", result.URL, result.FoundTerms))
 
-		// Record event
-		event := EventRecord{
-			Timestamp:   time.Now(),
-			EventType:   "found",
-			URL:         result.URL,
-			SearchTerms: result.FoundTerms,
-			Message:     fmt.Sprintf("Search terms found: %s", strings.Join(result.FoundTerms, ", ")),
-		}
-		m.recentEvents.Add(event)
+			// Record event
+			event := EventRecord{
+				Timestamp:   time.Now(),
+				EventType:   "found",
+				URL:         result.URL,
+				SearchTerms: result.FoundTerms,
+				Message:     fmt.Sprintf("Search terms found: %s", strings.Join(result.FoundTerms, ", ")),
+			}
+			m.recentEvents.Add(event)
 
-		// Send alert if allowed
-		if m.canSendAlert(result.URL, "found") {
-			if err := m.sendEmail(result); err != nil {
-				log.Printf("⚠️  Failed to send email alert: %v", err)
-				m.addLog(fmt.Sprintf("Failed to send email alert: %v", err))
-			} else {
-				m.recordAlert(result.URL, "found")
+			// Send alert if allowed and not already seen
+			if alreadySeen {
+				log.Printf("ℹ️  Skipping duplicate email - already notified about this incident (hash: %s...)", matchHash[:8])
+				m.addLog("Skipping duplicate email - already notified about this incident")
+			} else if m.canSendAlert(result.URL, "found") {
+				if err := m.sendEmail(result); err != nil {
+					log.Printf("⚠️  Failed to send email alert: %v", err)
+					m.addLog(fmt.Sprintf("Failed to send email alert: %v", err))
+				} else {
+					m.recordAlert(result.URL, "found")
+					// Record this match in persistent state
+					if m.state != nil {
+						m.state.RecordMatch(matchHash, result.URL, result.Date, result.Time, result.Address)
+					}
+				}
+			}
+		} else {
+			log.Printf("✓ Still found on %s: %v", result.URL, result.FoundTerms)
+			
+			// Even if still found, don't send another email if it's the same incident
+			if alreadySeen {
+				log.Printf("   (Same incident as before - hash: %s...)", matchHash[:8])
 			}
 		}
-	} else if result.Found {
-		log.Printf("✓ Still found on %s: %v", result.URL, result.FoundTerms)
 	} else if !result.Found && wasFound {
 		// Terms no longer found
 		log.Printf("✓ Terms no longer found on %s", result.URL)
 		m.addLog(fmt.Sprintf("Terms no longer found on %s", result.URL))
+		
+		// Save state since status changed
+		go m.saveState()
 
 		// Record recovery event
 		event := EventRecord{
