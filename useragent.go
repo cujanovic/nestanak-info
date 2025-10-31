@@ -108,15 +108,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 	uam.mu.Unlock()
 
 	log.Printf("✅ User-Agent pool ready with %d agents", len(selectedAgents))
-	for i, agent := range selectedAgents {
-		// Log abbreviated version
-		abbreviated := agent
-		if len(agent) > 80 {
-			abbreviated = agent[:77] + "..."
-		}
-		log.Printf("   %d. %s", i+1, abbreviated)
-	}
-
+	
 	return nil
 }
 
