@@ -261,8 +261,8 @@ func (m *Monitor) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Check for session cookie
-		cookie, err := r.Cookie("session")
+		// Check for session cookie (service-specific name)
+		cookie, err := r.Cookie("nestanak_session")
 		if err != nil || !m.sessionManager.ValidateSession(cookie.Value) {
 			// Redirect to login with return URL (validated)
 			returnURL := r.URL.Path
@@ -363,14 +363,16 @@ func (m *Monitor) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Set cookie (HTTP-only, SameSite, no Secure flag for HTTP/WireGuard)
+		// Set cookie (HTTP-only, SameSite, port-isolated for service separation)
+		// Using service-specific name to prevent conflicts with other services on same host
 		http.SetCookie(w, &http.Cookie{
-			Name:     "session",
+			Name:     "nestanak_session",
 			Value:    token,
 			Path:     "/",
 			MaxAge:   m.config.SessionTimeoutMinutes * 60,
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
+			// Domain not set = cookie is isolated to this exact host:port
 		})
 
 		log.Printf("✅ Successful login from %s", ip)
@@ -403,15 +405,15 @@ func (m *Monitor) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout handles logout
 func (m *Monitor) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// Get session cookie
-	cookie, err := r.Cookie("session")
+	// Get session cookie (service-specific name)
+	cookie, err := r.Cookie("nestanak_session")
 	if err == nil {
 		m.sessionManager.DeleteSession(cookie.Value)
 	}
 
 	// Clear cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
+		Name:     "nestanak_session",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
