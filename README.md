@@ -88,6 +88,13 @@ Edit `/opt/nestanak-info/config.json`:
 - `dns_cache_ttl_minutes`: DNS cache TTL in minutes (default: 5, range: 1-1440)
   - Reduces DNS queries and provides fallback when DNS fails
   - Detects and logs IP changes (useful for DDNS hosts)
+- `user_agent_rotation_enabled`: Enable/disable User-Agent rotation (default: true)
+  - When enabled: Fetches recent User-Agents from GitHub on startup
+  - When disabled: Uses static hardcoded User-Agent
+- `user_agent_pool_size`: Number of User-Agents to rotate through (default: 6, range: 1-100)
+  - Higher number = more diversity, less predictable pattern
+  - Lower number = simpler rotation, faster startup
+  - Max 100 (uses all available agents from source)
 
 #### Per-URL Configuration
 Each URL can have its own configuration:
@@ -226,7 +233,13 @@ The service performs intelligent monitoring and information extraction:
 3. **Per-URL search terms**: Each URL uses its own specific search terms
    - **Power**: "Земун", "Насеље БАТАЈНИЦА:" (specific settlement format)
    - **Water**: "Земун", "Батајница" (municipality + settlement)
-4. **User-Agent header** set to mimic a real browser for better compatibility
+4. **Rotating User-Agents**: Fetches recent browser User-Agents on startup and rotates through them (configurable)
+   - Automatically fetches from [microlinkhq/top-user-agents](https://github.com/microlinkhq/top-user-agents)
+   - Source based on 300M+ monthly requests, updated regularly
+   - Configurable pool size (1-100 agents, default: 6)
+   - Can be disabled to use static User-Agent
+   - Falls back to hardcoded agent if fetch fails
+   - Email notification sent to admin on fetch failure
 5. **HTML parsing** using `golang.org/x/net/html` for accurate text extraction
 6. **Section filtering** for water malfunctions: only extracts from "Без воде су потрошачи" section, ignoring "Распоред аутоцистерни" (cistern trucks)
 7. **URL-specific extraction** when search terms are detected:
@@ -462,13 +475,21 @@ Monitor any website for specific text or announcements.
 
 ## Technical Details
 
-- **Language**: Go 1.21+
+- **Language**: Go 1.25+
 - **Email Provider**: Brevo (SendInBlue) API via `github.com/sendinblue/APIv3-go-library/v2`
 - **HTML Parsing**: `golang.org/x/net/html` for accurate content extraction
 - **Authentication**: Argon2id password hashing with `golang.org/x/crypto`
 - **Concurrency**: Worker pool for efficient URL checking
 - **Security**: Rate limiting, security headers, session management
-- **User-Agent**: Browser-like UA for better website compatibility
+- **DNS Caching**: 5-minute TTL with automatic cleanup and fallback
+- **User-Agent Rotation** (configurable): 
+  - Fetches top 100 User-Agents from [microlinkhq/top-user-agents](https://github.com/microlinkhq/top-user-agents) on startup
+  - Data based on 300M+ monthly real-world requests
+  - Configurable pool size (`user_agent_pool_size`: 1-100, default: 6)
+  - Can be disabled (`user_agent_rotation_enabled: false`)
+  - Selects diverse agents (Chrome, Firefox, Safari) and rotates through them
+  - Automatic fallback to hardcoded agent if fetch fails
+  - Email notification to `error_recipient` on fetch failure
 
 ## Troubleshooting
 

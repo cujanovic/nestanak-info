@@ -24,6 +24,8 @@ type Config struct {
 	ConnectTimeout          int         `json:"connect_timeout"`
 	TimeOffsetHours         int         `json:"time_offset_hours"`
 	DNSCacheTTLMinutes      int         `json:"dns_cache_ttl_minutes"`
+	UserAgentRotation       bool        `json:"user_agent_rotation_enabled"`
+	UserAgentPoolSize       int         `json:"user_agent_pool_size"`
 	HTTPEnabled             bool        `json:"http_enabled"`
 	HTTPListen              string      `json:"http_listen"`
 	HTTPLogLines            int         `json:"http_log_lines"`
@@ -103,6 +105,9 @@ func ValidateConfig(config Config) error {
 	}
 	if config.DNSCacheTTLMinutes < 1 || config.DNSCacheTTLMinutes > 1440 {
 		errors = append(errors, "dns_cache_ttl_minutes must be between 1 and 1440 (24 hours)")
+	}
+	if config.UserAgentPoolSize < 1 || config.UserAgentPoolSize > 100 {
+		errors = append(errors, "user_agent_pool_size must be between 1 and 100")
 	}
 
 	// Validate email config

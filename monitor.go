@@ -14,10 +14,9 @@ import (
 	"golang.org/x/net/html"
 )
 
-const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
 // Monitor manages the URL checking service
 type Monitor struct {
+	userAgentManager         *UserAgentManager
 	config                   Config
 	lastAlertTime            map[AlertKey]time.Time
 	emailsSentThisHour       []time.Time
@@ -44,7 +43,22 @@ func NewMonitor(config Config) *Monitor {
 	dnsCacheTTL := time.Duration(config.DNSCacheTTLMinutes) * time.Minute
 	dnsCache := NewDNSCache(dnsCacheTTL)
 
+	// Create User-Agent manager
+	userAgentManager := NewUserAgentManager()
+	
+	// Fetch recent User-Agents if rotation is enabled (non-blocking, falls back on failure)
+	if config.UserAgentRotation {
+		go func() {
+			if err := userAgentManager.FetchUserAgents(config); err != nil {
+				log.Printf("⚠️  Using fallback User-Agent due to fetch failure")
+			}
+		}()
+	} else {
+		log.Printf("ℹ️  User-Agent rotation disabled, using static User-Agent")
+	}
+
 	m := &Monitor{
+		userAgentManager:         userAgentManager,
 		config:                     config,
 		lastAlertTime:              make(map[AlertKey]time.Time),
 		emailsSentThisHour:         make([]time.Time, 0),
@@ -162,13 +176,14 @@ func (m *Monitor) checkURL(urlConfig URLConfig) URLCheckResult {
 		Timeout: time.Duration(m.config.ConnectTimeout) * time.Second,
 	}
 
-	// Create request with User-Agent header
+	// Create request with rotating User-Agent header
 	req, err := http.NewRequest("GET", urlConfig.URL, nil)
 	if err != nil {
 		result.Error = err
 		return result
 	}
-	req.Header.Set("User-Agent", userAgent)
+	currentUserAgent := m.userAgentManager.GetNext()
+	req.Header.Set("User-Agent", currentUserAgent)
 
 	startTime := time.Now()
 	resp, err := client.Do(req)
