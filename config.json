@@ -1,0 +1,74 @@
+{
+  "check_interval_seconds": 300,
+  "alert_cooldown_minutes": 60,
+  "email_rate_limit_per_hour": 20,
+  "max_emails_per_url_per_day": 2,
+  "max_concurrent_checks": 5,
+  "connect_timeout": 8,
+  "time_offset_hours": 0,
+  "dns_cache_ttl_minutes": 5,
+  "http_enabled": true,
+  "http_listen": "127.0.0.1:8081",
+  "http_log_lines": 50,
+  "http_rate_limit_per_minute": 30,
+  "log_buffer_flush_seconds": 5,
+  "recent_matches_hours": 48,
+  "recent_events_buffer_size": 100,
+  "auth_enabled": false,
+  "password_hash": "",
+  "argon2_memory": 65536,
+  "argon2_time": 3,
+  "argon2_threads": 4,
+  "session_timeout_minutes": 60,
+  "max_login_attempts": 5,
+  "lockout_duration_minutes": 15,
+  "url_configs": [
+    {
+      "url": "https://elektrodistribucija.rs/planirana-iskljucenja-beograd/Dan_1_Iskljucenja.htm",
+      "name": "Power - Day 1",
+      "search_terms": [
+        "Земун",
+        "Насеље БАТАЈНИЦА:"
+      ]
+    },
+    {
+      "url": "https://elektrodistribucija.rs/planirana-iskljucenja-beograd/Dan_2_Iskljucenja.htm",
+      "name": "Power - Day 2",
+      "search_terms": [
+        "Земун",
+        "Насеље БАТАЈНИЦА:"
+      ]
+    },
+    {
+      "url": "https://elektrodistribucija.rs/planirana-iskljucenja-beograd/Dan_3_Iskljucenja.htm",
+      "name": "Power - Day 3",
+      "search_terms": [
+        "Земун",
+        "Насеље БАТАЈНИЦА:"
+      ]
+    },
+    {
+      "url": "https://www.bvk.rs/planirani-radovi/",
+      "name": "Water - Planned Work",
+      "search_terms": [
+        "Земун",
+        "Батајница"
+      ]
+    },
+    {
+      "url": "https://www.bvk.rs/kvarovi-na-mrezi/",
+      "name": "Water - Malfunctions",
+      "search_terms": [
+        "Земун",
+        "Батајница"
+      ]
+    }
+  ],
+  "recipients": [
+    "your-email@example.com"
+  ],
+  "error_recipient": "admin@example.com",
+  "brevo_api_key": "YOUR_BREVO_API_KEY_HERE",
+  "sender_email": "struja@localdomain.pw",
+  "sender_name": "Struja Notifier"
+}
