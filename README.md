@@ -1,4 +1,4 @@
-# Nestanak-Info Service
+# 🔌🚰 Nestanak-Info Service
 
 A monitoring service that checks URLs for specific search terms and sends email alerts when they are found. Monitors **power outages** (Elektrodistribucija) and **water outages** (Beogradski Vodovod) for Serbian cities, with smart extraction of dates, times, and locations.
 

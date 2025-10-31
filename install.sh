@@ -196,7 +196,7 @@ chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/wait-for-network.sh"
 echo -e "${GREEN}⚙️  Creating systemd service...${NC}"
 cat > "$SERVICE_FILE" << EOF
 [Unit]
-Description=Nestanak-Info Service - Power & Water Outage Monitor
+Description=🔌🚰 Nestanak-Info Service - Power & Water Outage Monitor
 Documentation=https://github.com/yourusername/nestanak-info
 After=network.target network-online.target
 Wants=network-online.target
