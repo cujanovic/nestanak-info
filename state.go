@@ -17,6 +17,7 @@ func NewServiceState() *ServiceState {
 		ErrorEmailsSentPerURLToday: make(map[string][]time.Time),
 		LastAlertTimes:             make(map[string]time.Time),
 		SeenMatches:                make(map[string]*MatchRecord),
+		RecentEmailNotifications:   make([]EmailNotification, 0, 100),
 		LastSaved:                  time.Now(),
 	}
 }

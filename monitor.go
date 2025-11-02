@@ -27,7 +27,6 @@ type Monitor struct {
 	unreachableURLs          map[string]bool         // Track URLs that are down
 	lastURLDownTime          map[string]time.Time    // When URL went down
 	recentEvents             *CircularBuffer
-	recentEmailNotifications []EmailNotification     // Track recent email notifications
 	asyncLogger              *AsyncLogger
 	workerPool               *WorkerPool
 	dnsCache                 *DNSCache               // DNS resolution cache
@@ -77,7 +76,6 @@ func NewMonitor(config Config) *Monitor {
 		unreachableURLs:            make(map[string]bool),
 		lastURLDownTime:            make(map[string]time.Time),
 		recentEvents:               NewCircularBuffer(config.RecentEventsBufferSize),
-		recentEmailNotifications:   make([]EmailNotification, 0, 100), // Keep last 100 email notifications
 		workerPool:                 NewWorkerPool(config.MaxConcurrentChecks),
 		dnsCache:                   dnsCache,
 		statsStartTime:             time.Now(),
@@ -1003,8 +1001,8 @@ The URL is now reachable again and monitoring has resumed.`, displayName, url, f
 
 // recordEmailNotification records an email notification for display in web UI
 func (m *Monitor) recordEmailNotification(url, name string, recipients []string, emailType, subject string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.state.mu.Lock()
+	defer m.state.mu.Unlock()
 
 	notification := EmailNotification{
 		Timestamp:  time.Now(),
@@ -1015,32 +1013,32 @@ func (m *Monitor) recordEmailNotification(url, name string, recipients []string,
 		Subject:    subject,
 	}
 
-	m.recentEmailNotifications = append(m.recentEmailNotifications, notification)
+	m.state.RecentEmailNotifications = append(m.state.RecentEmailNotifications, notification)
 
 	// Keep only last 100 notifications
-	if len(m.recentEmailNotifications) > 100 {
-		m.recentEmailNotifications = m.recentEmailNotifications[len(m.recentEmailNotifications)-100:]
+	if len(m.state.RecentEmailNotifications) > 100 {
+		m.state.RecentEmailNotifications = m.state.RecentEmailNotifications[len(m.state.RecentEmailNotifications)-100:]
 	}
 }
 
 // getRecentEmailNotifications returns recent email notifications for display
 func (m *Monitor) getRecentEmailNotifications(limit int) []EmailNotification {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.state.mu.RLock()
+	defer m.state.mu.RUnlock()
 
-	if len(m.recentEmailNotifications) == 0 {
+	if len(m.state.RecentEmailNotifications) == 0 {
 		return []EmailNotification{}
 	}
 
 	// Return last N notifications (most recent first)
 	notifications := make([]EmailNotification, 0)
-	start := len(m.recentEmailNotifications) - limit
+	start := len(m.state.RecentEmailNotifications) - limit
 	if start < 0 {
 		start = 0
 	}
 
-	for i := len(m.recentEmailNotifications) - 1; i >= start; i-- {
-		notifications = append(notifications, m.recentEmailNotifications[i])
+	for i := len(m.state.RecentEmailNotifications) - 1; i >= start; i-- {
+		notifications = append(notifications, m.state.RecentEmailNotifications[i])
 	}
 
 	return notifications

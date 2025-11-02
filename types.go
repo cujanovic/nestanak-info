@@ -137,6 +137,7 @@ type ServiceState struct {
 	ErrorEmailsSentPerURLToday map[string][]time.Time    `json:"error_emails_sent_per_url_today"`
 	LastAlertTimes             map[string]time.Time      `json:"last_alert_times"` // key: "url|alertType"
 	SeenMatches                map[string]*MatchRecord   `json:"seen_matches"`     // key: content hash
+	RecentEmailNotifications   []EmailNotification       `json:"recent_email_notifications"` // Recent email history
 	LastSaved                  time.Time                 `json:"last_saved"`
 	mu                         sync.RWMutex              `json:"-"`
 }
