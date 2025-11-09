@@ -285,12 +285,16 @@ The service maintains persistent state across restarts to prevent duplicate emai
 The service performs intelligent monitoring and information extraction:
 
 1. **Every 5 minutes** (configurable), checks all configured URLs
-2. **Smart search logic** prevents false positives:
-   - ❌ **Only "Земун" found** → Ignore (too broad)
-   - ✅ **"Земун" + "Батајница"** → Match (Batajnica specifically mentioned)
-   - ✅ **Only "Батајница"** → Match (valid hit)
+2. **Smart search logic** (fully configurable, no hardcoded values):
+   - **For 2 search terms**: Term 1 = broad, Term 2 = specific
+     - ❌ **Only term 1 found** → Ignore (too broad)
+     - ✅ **Term 1 + term 2** → Match (specific area mentioned)
+     - ✅ **Only term 2** → Match (specific area mentioned)
+   - **Example with "Земун" (broad) + "Батајница" (specific)**:
+     - ❌ Only "Земун" → Ignore | ✅ "Земун" + "Батајница" → Match | ✅ Only "Батајница" → Match
+   - **For 1 or 3+ search terms**: All must be present (standard AND logic)
 3. **Per-URL search terms**: Each URL uses its own specific search terms
-   - **Power**: "Земун", "Насеље БАТАЈНИЦА:" (specific settlement format)
+   - **Power**: "Земун", "Насеље БАТАЈНИЦА:" (municipality + specific settlement format)
    - **Water**: "Земун", "Батајница" (municipality + settlement)
 4. **Rotating User-Agents**: Fetches recent browser User-Agents on startup and rotates through them (configurable)
    - Automatically fetches from [microlinkhq/top-user-agents](https://github.com/microlinkhq/top-user-agents)
@@ -328,18 +332,28 @@ The service performs intelligent monitoring and information extraction:
 
 ## Search Logic Details
 
-### Smart Zemun/Batajnica Search
+### Smart Two-Term Search (Generic, Configurable)
 
-The service implements intelligent search logic to avoid false positives:
+The service implements intelligent search logic to avoid false positives. **This logic is fully generic and driven by your `config.json`** - no hardcoded city names!
 
-#### Rules
+#### How It Works
+
+When you configure **exactly 2 search terms** for a URL:
+- **Term 1** (first in array) = **Broader/general** term (e.g., municipality, region)
+- **Term 2** (second in array) = **Specific** term (e.g., settlement, neighborhood)
+
+The service applies smart filtering to prevent false positives from the broad term alone.
+
+#### Rules (Example: "Земун" + "Батајница")
 
 | Content Found | Action | Reason |
 |---------------|--------|---------|
-| ❌ **Only "Земун"** | **IGNORE** | Too broad - could be any part of Zemun municipality |
-| ✅ **"Земун" + "Батајница"** | **MATCH** | Valid - Batajnica is specifically mentioned |
-| ✅ **Only "Батајница"** | **MATCH** | Valid - Batajnica is specifically mentioned |
+| ❌ **Only term 1** ("Земун") | **IGNORE** | Too broad - could be anywhere in the municipality |
+| ✅ **Term 1 + term 2** ("Земун" + "Батајница") | **MATCH** | Valid - specific area is mentioned |
+| ✅ **Only term 2** ("Батајница") | **MATCH** | Valid - specific area is mentioned |
 | ❌ **Neither** | **IGNORE** | No relevant location found |
+
+**Note:** This works with **any** 2 search terms you configure! Examples: `["Београд", "Нови Београд"]`, `["Сурчин", "Добановци"]`, etc.
 
 #### Example Scenarios
 
@@ -395,26 +409,46 @@ For `https://www.bvk.rs/kvarovi-na-mrezi/`, the service only extracts data from 
 
 **Why?** The cistern truck section shows where **water trucks are parked** (temporary water supply), not where water outages are. We only want actual outage locations from the "Без воде су потрошачи" section.
 
-### Implementation
+### Implementation (Generic, No Hardcoded Values)
 
 ```go
 func containsAllSearchTerms(content string, terms []string) bool {
-    hasZemun := strings.Contains(content, "Земун")
-    hasBatajnica := strings.Contains(content, "Батајница")
-    
-    // Only Zemun found (no Batajnica) → Ignore
-    if hasZemun && !hasBatajnica {
+    if len(terms) == 0 {
         return false
     }
     
-    // Batajnica found (with or without Zemun) → Match
-    if hasBatajnica {
-        return true
+    // For exactly 2 search terms: use smart broad/specific logic
+    if len(terms) == 2 {
+        broadTerm := terms[0]    // First term = broader
+        specificTerm := terms[1] // Second term = specific
+        
+        hasBroad := strings.Contains(content, broadTerm)
+        hasSpecific := strings.Contains(content, specificTerm)
+        
+        // Only broad term found → Ignore (too broad)
+        if hasBroad && !hasSpecific {
+            return false
+        }
+        
+        // Specific term found (with or without broad) → Match
+        if hasSpecific {
+            return true
+        }
+        
+        return false
     }
     
-    return false
+    // For 1 or 3+ terms: all must be present
+    for _, term := range terms {
+        if !strings.Contains(content, term) {
+            return false
+        }
+    }
+    return true
 }
 ```
+
+**Key:** This code works with **any** search terms from your `config.json` - no city names are hardcoded!
 
 ### Testing
 

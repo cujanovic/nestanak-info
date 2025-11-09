@@ -542,32 +542,31 @@ func (m *Monitor) getRecentMatches() []IncidentInfo {
 
 // containsAllSearchTerms checks if content contains all search terms
 func containsAllSearchTerms(content string, terms []string) bool {
-	// Special logic for Zemun/Batajnica search:
-	// - If only "Земун" is found → Ignore (too broad)
-	// - If "Земун" + "Батајница" → Match (valid)
-	// - If only "Батајница" → Match (valid)
+	if len(terms) == 0 {
+		return false
+	}
 	
-	hasZemun := strings.Contains(content, "Земун")
-	hasBatajnica := strings.Contains(content, "Батајница")
-	
-	// If we have both Zemun and Batajnica in search terms
+	// Special logic for exactly 2 search terms:
+	// - Term 1 (index 0) = broader/general term (e.g., "Земун" = municipality)
+	// - Term 2 (index 1) = specific term (e.g., "Батајница" = settlement)
+	// Logic:
+	//   - If only term 1 found → Ignore (too broad, could be anywhere in municipality)
+	//   - If term 1 + term 2 → Match (specific area mentioned)
+	//   - If only term 2 → Match (specific area mentioned)
 	if len(terms) == 2 {
-		for _, term := range terms {
-			if strings.Contains(term, "Земун") {
-				hasZemun = strings.Contains(content, term)
-			}
-			if strings.Contains(term, "Батајница") || strings.Contains(term, "БАТАЈНИЦА") {
-				hasBatajnica = strings.Contains(content, term)
-			}
-		}
+		broadTerm := terms[0]    // First term is the broader one
+		specificTerm := terms[1] // Second term is the specific one
 		
-		// Only Zemun found (no Batajnica) → Ignore
-		if hasZemun && !hasBatajnica {
+		hasBroad := strings.Contains(content, broadTerm)
+		hasSpecific := strings.Contains(content, specificTerm)
+		
+		// Only broad term found (no specific) → Ignore
+		if hasBroad && !hasSpecific {
 			return false
 		}
 		
-		// Batajnica found (with or without Zemun) → Match
-		if hasBatajnica {
+		// Specific term found (with or without broad term) → Match
+		if hasSpecific {
 			return true
 		}
 		
@@ -575,7 +574,7 @@ func containsAllSearchTerms(content string, terms []string) bool {
 		return false
 	}
 	
-	// Fallback: original logic for other search term combinations
+	// For 1 term or 3+ terms: all must be present (standard AND logic)
 	for _, term := range terms {
 		if !strings.Contains(content, term) {
 			return false
@@ -809,33 +808,51 @@ func extractAddressWater(htmlContent string, searchTerms []string, url string) s
 			
 			// Only process if we're in the correct section
 			if inWaterOutageSection {
-				// Look for "Земун:" with Batajnica validation
-				if strings.Contains(text, "Земун:") {
-					// Check next few lines for Batajnica mention or just include Zemun entry
-					hasBatajnicaNearby := false
-					for j := i; j < i+5 && j < len(textNodes); j++ {
-						if strings.Contains(textNodes[j], "Батајница") || strings.Contains(textNodes[j], "Батајнички") {
-							hasBatajnicaNearby = true
-							break
+				// For 2 search terms: use smart logic
+				if len(searchTerms) == 2 {
+					broadTerm := searchTerms[0]    // e.g., "Земун" (municipality)
+					specificTerm := searchTerms[1] // e.g., "Батајница" (settlement)
+					
+					// Look for broad term followed by ":" (e.g., "Земун:")
+					if strings.Contains(text, broadTerm+":") {
+						// Check next few lines for specific term mention
+						hasSpecificNearby := false
+						for j := i; j < i+5 && j < len(textNodes); j++ {
+							if strings.Contains(textNodes[j], specificTerm) {
+								hasSpecificNearby = true
+								break
+							}
+						}
+						
+						// Include if specific term is nearby or in the line itself
+						if hasSpecificNearby || strings.Contains(text, specificTerm) {
+							cleaned := strings.TrimSpace(text)
+							cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
+							if len(cleaned) > 0 {
+								addresses = append(addresses, cleaned)
+							}
 						}
 					}
 					
-					// Include if Batajnica is nearby or if line itself has relevant terms
-					if hasBatajnicaNearby || strings.Contains(text, "Батајница") {
+					// Also look for direct specific term mentions
+					if strings.Contains(text, specificTerm) {
 						cleaned := strings.TrimSpace(text)
 						cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
-						if len(cleaned) > 0 {
+						if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) {
 							addresses = append(addresses, cleaned)
 						}
 					}
-				}
-				
-				// Also look for direct Batajnica mentions
-				if strings.Contains(text, "Батајница") || strings.Contains(text, "Батајнички") {
-					cleaned := strings.TrimSpace(text)
-					cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
-					if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) {
-						addresses = append(addresses, cleaned)
+				} else {
+					// For 1 or 3+ search terms: include lines containing any term
+					for _, term := range searchTerms {
+						if strings.Contains(text, term) {
+							cleaned := strings.TrimSpace(text)
+							cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
+							if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) {
+								addresses = append(addresses, cleaned)
+							}
+							break
+						}
 					}
 				}
 			}
