@@ -547,6 +547,9 @@ func containsAllSearchTerms(content string, terms []string) bool {
 		return false
 	}
 	
+	// Convert content to lowercase for case-insensitive matching
+	contentLower := strings.ToLower(content)
+	
 	// Special logic for exactly 2 search terms:
 	// - Term 1 (index 0) = broader/general term (e.g., "Земун" = municipality)
 	// - Term 2 (index 1) = specific term (e.g., "Батајница" = settlement)
@@ -555,11 +558,11 @@ func containsAllSearchTerms(content string, terms []string) bool {
 	//   - If term 1 + term 2 → Match (specific area mentioned)
 	//   - If only term 2 → Match (specific area mentioned)
 	if len(terms) == 2 {
-		broadTerm := terms[0]    // First term is the broader one
-		specificTerm := terms[1] // Second term is the specific one
+		broadTerm := strings.ToLower(terms[0])    // First term is the broader one
+		specificTerm := strings.ToLower(terms[1]) // Second term is the specific one
 		
-		hasBroad := strings.Contains(content, broadTerm)
-		hasSpecific := strings.Contains(content, specificTerm)
+		hasBroad := strings.Contains(contentLower, broadTerm)
+		hasSpecific := strings.Contains(contentLower, specificTerm)
 		
 		// Only broad term found (no specific) → Ignore
 		if hasBroad && !hasSpecific {
@@ -577,7 +580,8 @@ func containsAllSearchTerms(content string, terms []string) bool {
 	
 	// For 1 term or 3+ terms: all must be present (standard AND logic)
 	for _, term := range terms {
-		if !strings.Contains(content, term) {
+		termLower := strings.ToLower(term)
+		if !strings.Contains(contentLower, termLower) {
 			return false
 		}
 	}

@@ -285,17 +285,19 @@ The service maintains persistent state across restarts to prevent duplicate emai
 The service performs intelligent monitoring and information extraction:
 
 1. **Every 5 minutes** (configurable), checks all configured URLs
-2. **Smart search logic** (fully configurable, no hardcoded values):
+2. **Smart search logic** (fully configurable, no hardcoded values, **case-insensitive**):
    - **For 2 search terms**: Term 1 = broad, Term 2 = specific
      - ❌ **Only term 1 found** → Ignore (too broad)
      - ✅ **Term 1 + term 2** → Match (specific area mentioned)
      - ✅ **Only term 2** → Match (specific area mentioned)
    - **Example with "Земун" (broad) + "Батајница" (specific)**:
      - ❌ Only "Земун" → Ignore | ✅ "Земун" + "Батајница" → Match | ✅ Only "Батајница" → Match
+   - **Case-insensitive**: `"Батајница"` matches `"БАТАЈНИЦА"`, `"батајница"`, `"Батајница"`, etc.
    - **For 1 or 3+ search terms**: All must be present (standard AND logic)
 3. **Per-URL search terms**: Each URL uses its own specific search terms
-   - **Power**: "Земун", "Насеље БАТАЈНИЦА:" (municipality + specific settlement format)
+   - **Power**: "Земун", "Батајница" (municipality + settlement)
    - **Water**: "Земун", "Батајница" (municipality + settlement)
+   - **Tip**: You can use any case in config.json - matching is automatic!
 4. **Rotating User-Agents**: Fetches recent browser User-Agents on startup and rotates through them (configurable)
    - Automatically fetches from [microlinkhq/top-user-agents](https://github.com/microlinkhq/top-user-agents)
    - Source based on 300M+ monthly requests, updated regularly
@@ -373,7 +375,7 @@ Result: MATCH ✓ (Both found, Батајница present)
 
 **✅ Scenario 3: Only Batajnica (MATCHED)**
 ```
-Content: "У naseljима Батајница и Бусије"
+Content: "У naseljima Батајница и Бусије"
 Search Terms: ["Земун", "Батајница"]
 Result: MATCH ✓ (Батајница found)
 ```
@@ -383,6 +385,13 @@ Result: MATCH ✓ (Батајница found)
 Content: "31.10/01.11.2025. године – у naseljima Батајница и Бусије"
 Search Terms: ["Земун", "Батајница"]
 Result: MATCH ✓ (Батајница found)
+```
+
+**✅ Scenario 5: Case Insensitive (MATCHED)**
+```
+Content: "Насеље БАТАЈНИЦА: ДРАГЕ МИХАЈЛОВИЋА 60-80"
+Search Terms: ["земун", "батајница"]  ← lowercase in config
+Result: MATCH ✓ (БАТАЈНИЦА matches батајница, case-insensitive)
 ```
 
 ### Water Malfunctions - Section Filtering
@@ -409,7 +418,7 @@ For `https://www.bvk.rs/kvarovi-na-mrezi/`, the service only extracts data from 
 
 **Why?** The cistern truck section shows where **water trucks are parked** (temporary water supply), not where water outages are. We only want actual outage locations from the "Без воде су потрошачи" section.
 
-### Implementation (Generic, No Hardcoded Values)
+### Implementation (Generic, No Hardcoded Values, Case-Insensitive)
 
 ```go
 func containsAllSearchTerms(content string, terms []string) bool {
@@ -417,13 +426,16 @@ func containsAllSearchTerms(content string, terms []string) bool {
         return false
     }
     
+    // Convert to lowercase for case-insensitive matching
+    contentLower := strings.ToLower(content)
+    
     // For exactly 2 search terms: use smart broad/specific logic
     if len(terms) == 2 {
-        broadTerm := terms[0]    // First term = broader
-        specificTerm := terms[1] // Second term = specific
+        broadTerm := strings.ToLower(terms[0])    // First term = broader
+        specificTerm := strings.ToLower(terms[1]) // Second term = specific
         
-        hasBroad := strings.Contains(content, broadTerm)
-        hasSpecific := strings.Contains(content, specificTerm)
+        hasBroad := strings.Contains(contentLower, broadTerm)
+        hasSpecific := strings.Contains(contentLower, specificTerm)
         
         // Only broad term found → Ignore (too broad)
         if hasBroad && !hasSpecific {
@@ -440,7 +452,8 @@ func containsAllSearchTerms(content string, terms []string) bool {
     
     // For 1 or 3+ terms: all must be present
     for _, term := range terms {
-        if !strings.Contains(content, term) {
+        termLower := strings.ToLower(term)
+        if !strings.Contains(contentLower, termLower) {
             return false
         }
     }
@@ -448,7 +461,10 @@ func containsAllSearchTerms(content string, terms []string) bool {
 }
 ```
 
-**Key:** This code works with **any** search terms from your `config.json` - no city names are hardcoded!
+**Key Features:**
+- ✅ Works with **any** search terms from your `config.json` - no city names are hardcoded!
+- ✅ **Case-insensitive** matching - write search terms in any case you prefer
+- ✅ `"Батајница"` in config matches `"БАТАЈНИЦА"` in HTML automatically
 
 ### Testing
 
