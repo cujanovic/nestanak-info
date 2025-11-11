@@ -725,24 +725,26 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 					// Check if any cell contains our search terms
 					// Expected format: [Општина, Време, Улице] or similar
 					if len(cells) >= 3 {
-						// Look for the cell with our search terms (usually last column with addresses)
+						// Check if this row contains any of our search terms (case-insensitive)
+						rowContainsTerm := false
 						for _, cell := range cells {
+							cellLower := strings.ToLower(cell)
 							for _, term := range searchTerms {
-								if strings.Contains(cell, term) {
-									// Found the address cell
-									// Extract address after "Насеље БАТАЈНИЦА:" or similar pattern
-									if strings.Contains(cell, ":") {
-										parts := strings.SplitN(cell, ":", 2)
-										if len(parts) == 2 {
-											result = strings.TrimSpace(parts[1])
-											return
-										}
-									}
-									// Otherwise return the whole cell
-									result = strings.TrimSpace(cell)
-									return
+								if strings.Contains(cellLower, strings.ToLower(term)) {
+									rowContainsTerm = true
+									break
 								}
 							}
+							if rowContainsTerm {
+								break
+							}
+						}
+						
+						// If row matches, return the THIRD column (index 2) which contains the addresses
+						if rowContainsTerm {
+							addressCell := cells[2] // Third column = Улице (addresses)
+							result = strings.TrimSpace(addressCell)
+							return
 						}
 					}
 				}
