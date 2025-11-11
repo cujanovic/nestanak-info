@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -608,59 +609,167 @@ func extractDate(htmlContent string) string {
 	return date
 }
 
-// extractTime extracts the time information from HTML content
+// extractTime extracts the time information from HTML table
 func extractTime(htmlContent string, searchTerms []string) string {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		return ""
 	}
 
-	textNodes := extractTextNodes(doc)
-
-	// Find the index of the search term
-	for i, text := range textNodes {
-		matchAll := true
-		for _, term := range searchTerms {
-			if !strings.Contains(text, term) {
-				matchAll = false
-				break
-			}
-		}
-
-		if matchAll || containsSearchTerm(text, searchTerms[0]) {
-			// Look backwards for time information (typically in format XX:XX-XX:XX)
-			for j := i - 1; j >= 0 && j >= i-20; j-- {
-				if isTimeFormat(textNodes[j]) {
-					return strings.TrimSpace(textNodes[j])
+	// Parse table structure: find rows where search terms appear, extract time from same row
+	var result string
+	var findTable func(*html.Node)
+	findTable = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "table" {
+			// Found a table, now parse rows
+			var parseRow func(*html.Node)
+			parseRow = func(row *html.Node) {
+				if row.Type == html.ElementNode && row.Data == "tr" {
+					// Extract all cells from this row
+					var cells []string
+					var extractCells func(*html.Node)
+					extractCells = func(cell *html.Node) {
+						if cell.Type == html.ElementNode && (cell.Data == "td" || cell.Data == "th") {
+							// Get text content from this cell
+							cellText := getTextContent(cell)
+							cells = append(cells, cellText)
+						}
+						for c := cell.FirstChild; c != nil; c = c.NextSibling {
+							extractCells(c)
+						}
+					}
+					for c := row.FirstChild; c != nil; c = c.NextSibling {
+						extractCells(c)
+					}
+					
+					// Check if any cell contains our search terms
+					// Expected format: [Општина, Време, Улице] or similar
+					if len(cells) >= 3 {
+						// Check if any cell (especially the address cell) contains search terms
+						foundMatch := false
+						for _, cell := range cells {
+							for _, term := range searchTerms {
+								if strings.Contains(cell, term) {
+									foundMatch = true
+									break
+								}
+							}
+							if foundMatch {
+								break
+							}
+						}
+						
+						if foundMatch {
+							// Extract time from the appropriate column (usually column index 1)
+							// Try each cell until we find one with time format
+							for _, cell := range cells {
+								if isTimeFormat(cell) {
+									result = strings.TrimSpace(cell)
+									return
+								}
+							}
+						}
+					}
+				}
+				for c := row.FirstChild; c != nil; c = c.NextSibling {
+					parseRow(c)
 				}
 			}
+			parseRow(n)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findTable(c)
 		}
 	}
-	return ""
+	findTable(doc)
+	return result
 }
 
-// extractAddress extracts the address information from HTML content
+// extractAddress extracts the address information from HTML table
 func extractAddress(htmlContent string, searchTerms []string) string {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		return ""
 	}
 
-	textNodes := extractTextNodes(doc)
-
-	for _, text := range textNodes {
-		// Check if this node contains the specific settlement pattern
-		for _, term := range searchTerms {
-			if strings.Contains(text, term) && strings.Contains(text, ":") {
-				// Extract everything after the colon
-				parts := strings.SplitN(text, ":", 2)
-				if len(parts) == 2 {
-					return strings.TrimSpace(parts[1])
+	// Parse table structure: find rows where search terms appear, extract address from same row
+	var result string
+	var findTable func(*html.Node)
+	findTable = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "table" {
+			// Found a table, now parse rows
+			var parseRow func(*html.Node)
+			parseRow = func(row *html.Node) {
+				if row.Type == html.ElementNode && row.Data == "tr" {
+					// Extract all cells from this row
+					var cells []string
+					var extractCells func(*html.Node)
+					extractCells = func(cell *html.Node) {
+						if cell.Type == html.ElementNode && (cell.Data == "td" || cell.Data == "th") {
+							// Get text content from this cell
+							cellText := getTextContent(cell)
+							cells = append(cells, cellText)
+						}
+						for c := cell.FirstChild; c != nil; c = c.NextSibling {
+							extractCells(c)
+						}
+					}
+					for c := row.FirstChild; c != nil; c = c.NextSibling {
+						extractCells(c)
+					}
+					
+					// Check if any cell contains our search terms
+					// Expected format: [Општина, Време, Улице] or similar
+					if len(cells) >= 3 {
+						// Look for the cell with our search terms (usually last column with addresses)
+						for _, cell := range cells {
+							for _, term := range searchTerms {
+								if strings.Contains(cell, term) {
+									// Found the address cell
+									// Extract address after "Насеље БАТАЈНИЦА:" or similar pattern
+									if strings.Contains(cell, ":") {
+										parts := strings.SplitN(cell, ":", 2)
+										if len(parts) == 2 {
+											result = strings.TrimSpace(parts[1])
+											return
+										}
+									}
+									// Otherwise return the whole cell
+									result = strings.TrimSpace(cell)
+									return
+								}
+							}
+						}
+					}
+				}
+				for c := row.FirstChild; c != nil; c = c.NextSibling {
+					parseRow(c)
 				}
 			}
+			parseRow(n)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findTable(c)
 		}
 	}
-	return ""
+	findTable(doc)
+	return result
+}
+
+// getTextContent extracts all text content from a node and its children
+func getTextContent(n *html.Node) string {
+	var result strings.Builder
+	var extract func(*html.Node)
+	extract = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			result.WriteString(node.Data)
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			extract(c)
+		}
+	}
+	extract(n)
+	return strings.TrimSpace(result.String())
 }
 
 // extractTextNodes extracts all text nodes from HTML
@@ -687,10 +796,13 @@ func containsSearchTerm(text string, term string) bool {
 	return strings.Contains(text, term)
 }
 
-// isTimeFormat checks if text matches time format like "08:00-16:00"
+// isTimeFormat checks if text matches time format like "08:00-16:00" or "08:00 - 16:00"
 func isTimeFormat(text string) bool {
 	text = strings.TrimSpace(text)
-	return strings.Contains(text, ":") && (strings.Contains(text, "-") || strings.Contains(text, "–"))
+	// Match patterns like "09:30 - 14:00" or "09:30-14:00" or "08:00–16:00"
+	// Must have digits:digits format, not just any colon (to avoid matching street addresses like "УЛИЦА: 2-14А")
+	timePattern := regexp.MustCompile(`\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}`)
+	return timePattern.MatchString(text)
 }
 
 // ========== Water-specific extraction functions (BVK) ==========

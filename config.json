@@ -26,11 +26,19 @@
   "lockout_duration_minutes": 15,
   "url_configs": [
     {
+      "url": "https://elektrodistribucija.rs/planirana-iskljucenja-beograd/Dan_0_Iskljucenja.htm",
+      "name": "Power - Day 0",
+      "search_terms": [
+        "Земун",
+        "БАТАЈНИЦА"
+      ]
+    },
+    {
       "url": "https://elektrodistribucija.rs/planirana-iskljucenja-beograd/Dan_1_Iskljucenja.htm",
       "name": "Power - Day 1",
       "search_terms": [
         "Земун",
-        "Насеље БАТАЈНИЦА:"
+        "БАТАЈНИЦА"
       ]
     },
     {
@@ -38,7 +46,7 @@
       "name": "Power - Day 2",
       "search_terms": [
         "Земун",
-        "Насеље БАТАЈНИЦА:"
+        "БАТАЈНИЦА"
       ]
     },
     {
@@ -46,7 +54,7 @@
       "name": "Power - Day 3",
       "search_terms": [
         "Земун",
-        "Насеље БАТАЈНИЦА:"
+        "БАТАЈНИЦА"
       ]
     },
     {
