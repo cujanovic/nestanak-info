@@ -946,17 +946,47 @@ func extractAddressWater(htmlContent string, searchTerms []string, url string) s
 						if hasSpecificNearby || strings.Contains(text, specificTerm) {
 							cleaned := strings.TrimSpace(text)
 							cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
-							if len(cleaned) > 0 {
-								addresses = append(addresses, cleaned)
+							
+							// Filter addresses to only include those containing the specific term
+							// Split by comma and keep only addresses with the specific term
+							if strings.Contains(cleaned, ",") {
+								// Extract the municipality prefix (e.g., "Земун:")
+								parts := strings.SplitN(cleaned, ":", 2)
+								if len(parts) == 2 {
+									prefix := strings.TrimSpace(parts[0]) + ":"
+									addressList := parts[1]
+									
+									// Split addresses by comma
+									addressParts := strings.Split(addressList, ",")
+									filteredAddresses := make([]string, 0)
+									
+									for _, addr := range addressParts {
+										addr = strings.TrimSpace(addr)
+										// Keep addresses that contain the specific term
+										if strings.Contains(strings.ToLower(addr), strings.ToLower(specificTerm)) {
+											filteredAddresses = append(filteredAddresses, addr)
+										}
+									}
+									
+									// Only add if we found relevant addresses
+									if len(filteredAddresses) > 0 {
+										result := prefix + " " + strings.Join(filteredAddresses, ", ")
+										addresses = append(addresses, result)
+									}
+								}
+							} else {
+								// No commas, just add the whole line if it contains specific term
+								if len(cleaned) > 0 && strings.Contains(strings.ToLower(cleaned), strings.ToLower(specificTerm)) {
+									addresses = append(addresses, cleaned)
+								}
 							}
 						}
-					}
-					
-					// Also look for direct specific term mentions
-					if strings.Contains(text, specificTerm) {
+					} else if strings.Contains(text, specificTerm) {
+					// Also look for direct specific term mentions (not already processed above)
 						cleaned := strings.TrimSpace(text)
 						cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
-						if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) {
+						// Only add if not already processed and contains specific term
+						if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) && strings.Contains(strings.ToLower(cleaned), strings.ToLower(specificTerm)) {
 							addresses = append(addresses, cleaned)
 						}
 					}
