@@ -895,7 +895,7 @@ func extractAddressWater(htmlContent string, searchTerms []string, url string) s
 		for _, text := range textNodes {
 			// Look for lines with our search terms
 			for _, term := range searchTerms {
-				if strings.Contains(text, term) {
+				if strings.Contains(strings.ToLower(text), strings.ToLower(term)) {
 					// Extract the whole line as it contains settlement info
 					// Example: "у naseljима Батајница и Бусије"
 					cleaned := strings.TrimSpace(text)
@@ -932,18 +932,18 @@ func extractAddressWater(htmlContent string, searchTerms []string, url string) s
 					specificTerm := searchTerms[1] // e.g., "Батајница" (settlement)
 					
 					// Look for broad term followed by ":" (e.g., "Земун:")
-					if strings.Contains(text, broadTerm+":") {
+					if strings.Contains(strings.ToLower(text), strings.ToLower(broadTerm)+":") {
 						// Check next few lines for specific term mention
 						hasSpecificNearby := false
 						for j := i; j < i+5 && j < len(textNodes); j++ {
-							if strings.Contains(textNodes[j], specificTerm) {
+							if strings.Contains(strings.ToLower(textNodes[j]), strings.ToLower(specificTerm)) {
 								hasSpecificNearby = true
 								break
 							}
 						}
 						
 						// Include if specific term is nearby or in the line itself
-						if hasSpecificNearby || strings.Contains(text, specificTerm) {
+						if hasSpecificNearby || strings.Contains(strings.ToLower(text), strings.ToLower(specificTerm)) {
 							cleaned := strings.TrimSpace(text)
 							cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
 							
@@ -981,19 +981,43 @@ func extractAddressWater(htmlContent string, searchTerms []string, url string) s
 								}
 							}
 						}
-					} else if strings.Contains(text, specificTerm) {
-					// Also look for direct specific term mentions (not already processed above)
+					} else if strings.Contains(strings.ToLower(text), strings.ToLower(specificTerm)) {
+						// Also look for direct specific term mentions (not already processed above)
 						cleaned := strings.TrimSpace(text)
 						cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
-						// Only add if not already processed and contains specific term
-						if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) && strings.Contains(strings.ToLower(cleaned), strings.ToLower(specificTerm)) {
-							addresses = append(addresses, cleaned)
+						
+						// If this line has commas, it might be a multi-address line, so filter it
+						if strings.Contains(cleaned, ",") {
+							// Split addresses by comma
+							addressParts := strings.Split(cleaned, ",")
+							filteredAddresses := make([]string, 0)
+							
+							for _, addr := range addressParts {
+								addr = strings.TrimSpace(addr)
+								// Keep addresses that contain the specific term
+								if strings.Contains(strings.ToLower(addr), strings.ToLower(specificTerm)) {
+									filteredAddresses = append(filteredAddresses, addr)
+								}
+							}
+							
+							// Only add if we found relevant addresses and not already added
+							if len(filteredAddresses) > 0 {
+								result := strings.Join(filteredAddresses, ", ")
+								if !strings.Contains(strings.Join(addresses, " "), result) {
+									addresses = append(addresses, result)
+								}
+							}
+						} else {
+							// No commas, just add the whole line if it contains specific term
+							if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) && strings.Contains(strings.ToLower(cleaned), strings.ToLower(specificTerm)) {
+								addresses = append(addresses, cleaned)
+							}
 						}
 					}
 				} else {
 					// For 1 or 3+ search terms: include lines containing any term
 					for _, term := range searchTerms {
-						if strings.Contains(text, term) {
+						if strings.Contains(strings.ToLower(text), strings.ToLower(term)) {
 							cleaned := strings.TrimSpace(text)
 							cleaned = strings.ReplaceAll(cleaned, "&#8211;", "–")
 							if len(cleaned) > 0 && !strings.Contains(strings.Join(addresses, " "), cleaned) {
