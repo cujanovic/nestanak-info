@@ -30,8 +30,8 @@ const userAgentSourceURL = "https://raw.githubusercontent.com/microlinkhq/top-us
 
 // NewUserAgentManager creates a new User-Agent manager with fallback
 func NewUserAgentManager() *UserAgentManager {
-	// Seed random number generator for User-Agent selection
-	rand.Seed(time.Now().UnixNano())
+	// Note: Go 1.20+ automatically seeds the global random generator
+	// No need to call rand.Seed() anymore
 	
 	return &UserAgentManager{
 		agents:        []string{defaultUserAgent},
@@ -159,7 +159,7 @@ func (uam *UserAgentManager) selectUserAgents(agents []string, count int) []stri
 	}
 	
 	// Shuffle to avoid predictable pattern
-	rand.Seed(time.Now().UnixNano())
+	// Go 1.20+ automatically seeds the global random generator
 	rand.Shuffle(len(selected), func(i, j int) {
 		selected[i], selected[j] = selected[j], selected[i]
 	})

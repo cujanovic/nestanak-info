@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	_ "sync" // Used in types.go
 )
 
@@ -32,7 +33,8 @@ func (wp *WorkerPool) worker() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						// Log panic but continue
+						// Log panic but continue worker operation
+						log.Printf("⚠️  Worker panic recovered: %v", r)
 					}
 				}()
 				task()
@@ -60,17 +62,7 @@ func (wp *WorkerPool) Stop() {
 	wp.wg.Wait()
 }
 
-// WaitForCompletion waits for all submitted tasks to complete
-func (wp *WorkerPool) WaitForCompletion() {
-	// Close task channel and wait for workers to finish
-	close(wp.taskChan)
-	wp.wg.Wait()
-	
-	// Restart workers
-	wp.taskChan = make(chan func(), wp.workers*2)
-	for i := 0; i < wp.workers; i++ {
-		wp.wg.Add(1)
-		go wp.worker()
-	}
-}
+// Note: WaitForCompletion was removed as it was dangerous (closed/recreated taskChan)
+// and unused in the codebase. If needed in future, implement proper draining without
+// closing the channel.
 

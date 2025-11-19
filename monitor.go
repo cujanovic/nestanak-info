@@ -162,6 +162,33 @@ func (m *Monitor) Start() {
 	wg.Wait()
 }
 
+// Shutdown gracefully shuts down the monitor
+func (m *Monitor) Shutdown() {
+	log.Printf("🛑 Initiating shutdown...")
+	
+	// Close stopChan to signal all goroutines to stop
+	close(m.stopChan)
+	
+	// Give goroutines a moment to finish
+	time.Sleep(2 * time.Second)
+	
+	// Save state one last time
+	m.saveState()
+	log.Printf("💾 Final state saved")
+	
+	// Stop async logger
+	if m.asyncLogger != nil {
+		m.asyncLogger.Stop()
+	}
+	
+	// Stop worker pool
+	if m.workerPool != nil {
+		m.workerPool.Stop()
+	}
+	
+	log.Printf("✅ Monitor shutdown complete")
+}
+
 // saveState persists current state to disk
 func (m *Monitor) saveState() {
 	if m.state == nil || m.config.StateFilePath == "" {
@@ -649,11 +676,12 @@ func extractTime(htmlContent string, searchTerms []string) string {
 					// Check if any cell contains our search terms
 					// Expected format: [Општина, Време, Улице] or similar
 					if len(cells) >= 3 {
-						// Check if any cell (especially the address cell) contains search terms
+						// Check if any cell (especially the address cell) contains search terms (case-insensitive)
 						foundMatch := false
 						for _, cell := range cells {
+							cellLower := strings.ToLower(cell)
 							for _, term := range searchTerms {
-								if strings.Contains(cell, term) {
+								if strings.Contains(cellLower, strings.ToLower(term)) {
 									foundMatch = true
 									break
 								}
@@ -1190,6 +1218,10 @@ The URL is now reachable again and monitoring has resumed.`, displayName, url, f
 
 // recordEmailNotification records an email notification for display in web UI
 func (m *Monitor) recordEmailNotification(url, name string, recipients []string, emailType, subject string) {
+	if m.state == nil {
+		return // State not initialized, skip recording
+	}
+
 	m.state.mu.Lock()
 	defer m.state.mu.Unlock()
 
@@ -1212,6 +1244,10 @@ func (m *Monitor) recordEmailNotification(url, name string, recipients []string,
 
 // getRecentEmailNotifications returns recent email notifications for display
 func (m *Monitor) getRecentEmailNotifications(limit int) []EmailNotification {
+	if m.state == nil {
+		return []EmailNotification{} // State not initialized, return empty
+	}
+
 	m.state.mu.RLock()
 	defer m.state.mu.RUnlock()
 

@@ -44,13 +44,18 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	
-	go func() {
-		<-sigChan
-		log.Printf("👋 Shutting down gracefully...")
-		os.Exit(0)
-	}()
-
-	monitor.Start()
+	// Start monitor in background
+	go monitor.Start()
+	
+	// Wait for shutdown signal
+	<-sigChan
+	log.Printf("👋 Shutting down gracefully...")
+	
+	// Trigger graceful shutdown
+	monitor.Shutdown()
+	
+	log.Printf("✅ Shutdown complete")
+	os.Exit(0)
 }
 
 // handlePasswordGeneration generates an Argon2id hash for a password

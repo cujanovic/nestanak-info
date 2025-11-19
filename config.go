@@ -192,7 +192,7 @@ func ValidateConfig(config Config) error {
 		}
 		for j, term := range urlConfig.SearchTerms {
 			if term == "" {
-				errors = append(errors, fmt.Sprintf("url_configs[%d].search_terms[%j] cannot be empty", i, j))
+				errors = append(errors, fmt.Sprintf("url_configs[%d].search_terms[%d] cannot be empty", i, j))
 			}
 		}
 	}
