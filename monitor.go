@@ -569,6 +569,7 @@ func (m *Monitor) getRecentMatches() []IncidentInfo {
 }
 
 // containsAllSearchTerms checks if content contains all search terms
+// Supports both Cyrillic and Latin script variants automatically
 func containsAllSearchTerms(content string, terms []string) bool {
 	if len(terms) == 0 {
 		return false
@@ -576,6 +577,17 @@ func containsAllSearchTerms(content string, terms []string) bool {
 	
 	// Convert content to lowercase for case-insensitive matching
 	contentLower := strings.ToLower(content)
+	
+	// Helper function to check if any variant of a term is in content
+	containsAnyVariant := func(content string, term string) bool {
+		variants := getSearchVariants(term)
+		for _, variant := range variants {
+			if strings.Contains(content, strings.ToLower(variant)) {
+				return true
+			}
+		}
+		return false
+	}
 	
 	// Special logic for exactly 2 search terms:
 	// - Term 1 (index 0) = broader/general term (e.g., "Земун" = municipality)
@@ -585,11 +597,11 @@ func containsAllSearchTerms(content string, terms []string) bool {
 	//   - If term 1 + term 2 → Match (specific area mentioned)
 	//   - If only term 2 → Match (specific area mentioned)
 	if len(terms) == 2 {
-		broadTerm := strings.ToLower(terms[0])    // First term is the broader one
-		specificTerm := strings.ToLower(terms[1]) // Second term is the specific one
+		broadTerm := terms[0]    // First term is the broader one
+		specificTerm := terms[1] // Second term is the specific one
 		
-		hasBroad := strings.Contains(contentLower, broadTerm)
-		hasSpecific := strings.Contains(contentLower, specificTerm)
+		hasBroad := containsAnyVariant(contentLower, broadTerm)
+		hasSpecific := containsAnyVariant(contentLower, specificTerm)
 		
 		// Only broad term found (no specific) → Ignore
 		if hasBroad && !hasSpecific {
@@ -607,8 +619,7 @@ func containsAllSearchTerms(content string, terms []string) bool {
 	
 	// For 1 term or 3+ terms: all must be present (standard AND logic)
 	for _, term := range terms {
-		termLower := strings.ToLower(term)
-		if !strings.Contains(contentLower, termLower) {
+		if !containsAnyVariant(contentLower, term) {
 			return false
 		}
 	}

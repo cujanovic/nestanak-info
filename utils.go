@@ -134,6 +134,146 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
+// cyrillicToLatin converts Serbian Cyrillic text to Latin
+func cyrillicToLatin(text string) string {
+	result := text
+	
+	// Process two-letter Cyrillic letters first (they map to two Latin letters)
+	twoLetterReplacements := [][]string{
+		{"Љ", "Lj"}, {"љ", "lj"},
+		{"Њ", "Nj"}, {"њ", "nj"},
+		{"Џ", "Dž"}, {"џ", "dž"},
+	}
+	for _, pair := range twoLetterReplacements {
+		result = replaceAll(result, pair[0], pair[1])
+	}
+	
+	// Then single Cyrillic letters
+	singleLetterReplacements := [][]string{
+		{"А", "A"}, {"а", "a"},
+		{"Б", "B"}, {"б", "b"},
+		{"В", "V"}, {"в", "v"},
+		{"Г", "G"}, {"г", "g"},
+		{"Д", "D"}, {"д", "d"},
+		{"Ђ", "Đ"}, {"ђ", "đ"},
+		{"Е", "E"}, {"е", "e"},
+		{"Ж", "Ž"}, {"ж", "ž"},
+		{"З", "Z"}, {"з", "z"},
+		{"И", "I"}, {"и", "i"},
+		{"Ј", "J"}, {"ј", "j"},
+		{"К", "K"}, {"к", "k"},
+		{"Л", "L"}, {"л", "l"},
+		{"М", "M"}, {"м", "m"},
+		{"Н", "N"}, {"н", "n"},
+		{"О", "O"}, {"о", "o"},
+		{"П", "P"}, {"п", "p"},
+		{"Р", "R"}, {"р", "r"},
+		{"С", "S"}, {"с", "s"},
+		{"Т", "T"}, {"т", "t"},
+		{"Ћ", "Ć"}, {"ћ", "ć"},
+		{"У", "U"}, {"у", "u"},
+		{"Ф", "F"}, {"ф", "f"},
+		{"Х", "H"}, {"х", "h"},
+		{"Ц", "C"}, {"ц", "c"},
+		{"Ч", "Č"}, {"ч", "č"},
+		{"Ш", "Š"}, {"ш", "š"},
+	}
+	
+	for _, pair := range singleLetterReplacements {
+		result = replaceAll(result, pair[0], pair[1])
+	}
+	
+	return result
+}
+
+// latinToCyrillic converts Serbian Latin text to Cyrillic
+func latinToCyrillic(text string) string {
+	result := text
+	
+	// Process two-letter replacements first (most specific to least specific)
+	twoLetterReplacements := [][]string{
+		{"Lj", "Љ"}, {"lj", "љ"}, {"LJ", "Љ"},
+		{"Nj", "Њ"}, {"nj", "њ"}, {"NJ", "Њ"},
+		{"Dž", "Џ"}, {"dž", "џ"}, {"DŽ", "Џ"},
+	}
+	for _, pair := range twoLetterReplacements {
+		result = replaceAll(result, pair[0], pair[1])
+	}
+	
+	// Then single-letter replacements (order matters - special chars before basic ones)
+	singleLetterReplacements := [][]string{
+		// Special Latin characters first
+		{"Đ", "Ђ"}, {"đ", "ђ"},
+		{"Ž", "Ж"}, {"ž", "ж"},
+		{"Ć", "Ћ"}, {"ć", "ћ"},
+		{"Č", "Ч"}, {"č", "ч"},
+		{"Š", "Ш"}, {"š", "ш"},
+		// Basic letters
+		{"A", "А"}, {"a", "а"},
+		{"B", "Б"}, {"b", "б"},
+		{"V", "В"}, {"v", "в"},
+		{"G", "Г"}, {"g", "г"},
+		{"D", "Д"}, {"d", "д"},
+		{"E", "Е"}, {"e", "е"},
+		{"Z", "З"}, {"z", "з"},
+		{"I", "И"}, {"i", "и"},
+		{"J", "Ј"}, {"j", "ј"},
+		{"K", "К"}, {"k", "к"},
+		{"L", "Л"}, {"l", "л"},
+		{"M", "М"}, {"m", "м"},
+		{"N", "Н"}, {"n", "н"},
+		{"O", "О"}, {"o", "о"},
+		{"P", "П"}, {"p", "п"},
+		{"R", "Р"}, {"r", "р"},
+		{"S", "С"}, {"s", "с"},
+		{"T", "Т"}, {"t", "т"},
+		{"U", "У"}, {"u", "у"},
+		{"F", "Ф"}, {"f", "ф"},
+		{"H", "Х"}, {"h", "х"},
+		{"C", "Ц"}, {"c", "ц"},
+	}
+	
+	for _, pair := range singleLetterReplacements {
+		result = replaceAll(result, pair[0], pair[1])
+	}
+	
+	return result
+}
+
+// replaceAll is a helper function for string replacement
+func replaceAll(s, old, new string) string {
+	result := ""
+	for len(s) > 0 {
+		if len(s) >= len(old) && s[:len(old)] == old {
+			result += new
+			s = s[len(old):]
+		} else {
+			result += s[:1]
+			s = s[1:]
+		}
+	}
+	return result
+}
+
+// getSearchVariants returns all variants (original + transliterated) of a search term
+func getSearchVariants(term string) []string {
+	variants := []string{term}
+	
+	// Convert to Latin if Cyrillic
+	latinVersion := cyrillicToLatin(term)
+	if latinVersion != term {
+		variants = append(variants, latinVersion)
+	}
+	
+	// Convert to Cyrillic if Latin
+	cyrillicVersion := latinToCyrillic(term)
+	if cyrillicVersion != term && cyrillicVersion != latinVersion {
+		variants = append(variants, cyrillicVersion)
+	}
+	
+	return variants
+}
+
 // CachedStats methods (for future use if needed)
 
 // Set sets the cached data

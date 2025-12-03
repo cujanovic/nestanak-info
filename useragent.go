@@ -57,7 +57,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 		log.Printf("⚠️  %s", errMsg)
 		// Send notification email
 		uam.sendFetchFailureEmail(config, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to fetch User-Agent strings from GitHub: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -65,7 +65,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 		errMsg := fmt.Sprintf("Failed to fetch User-Agent strings: HTTP %d", resp.StatusCode)
 		log.Printf("⚠️  %s", errMsg)
 		uam.sendFetchFailureEmail(config, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to fetch User-Agent strings: HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -73,7 +73,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 		errMsg := fmt.Sprintf("Failed to read User-Agent response: %v", err)
 		log.Printf("⚠️  %s", errMsg)
 		uam.sendFetchFailureEmail(config, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to read User-Agent response: %w", err)
 	}
 
 	// Parse JSON array of User-Agent strings
@@ -82,7 +82,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 		errMsg := fmt.Sprintf("Failed to parse User-Agent JSON: %v", err)
 		log.Printf("⚠️  %s", errMsg)
 		uam.sendFetchFailureEmail(config, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to parse User-Agent JSON: %w", err)
 	}
 
 	fetchedAgents = jsonAgents
@@ -91,7 +91,7 @@ func (uam *UserAgentManager) FetchUserAgents(config Config) error {
 		errMsg := "No User-Agent strings found in response"
 		log.Printf("⚠️  %s", errMsg)
 		uam.sendFetchFailureEmail(config, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("no User-Agent strings found in response")
 	}
 
 	log.Printf("   ✅ Fetched %d User-Agent strings from microlinkhq/top-user-agents", len(fetchedAgents))
