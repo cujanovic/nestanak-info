@@ -658,6 +658,45 @@ func extractTime(htmlContent string, searchTerms []string) string {
 		return ""
 	}
 
+	// Helper function to check if row should be extracted based on search term logic
+	shouldExtractRow := func(rowText string) bool {
+		rowLower := strings.ToLower(rowText)
+		
+		// For 2 search terms: use special broad/specific logic
+		if len(searchTerms) == 2 {
+			specificTerm := searchTerms[1] // e.g., "Батајница" (specific term)
+			
+			// Check if row contains the specific term (with Cyrillic/Latin variants)
+			specificVariants := getSearchVariants(specificTerm)
+			hasSpecific := false
+			for _, variant := range specificVariants {
+				if strings.Contains(rowLower, strings.ToLower(variant)) {
+					hasSpecific = true
+					break
+				}
+			}
+			
+			// Only extract if specific term is present
+			return hasSpecific
+		}
+		
+		// For 1 or 3+ terms: row must contain ALL terms
+		for _, term := range searchTerms {
+			variants := getSearchVariants(term)
+			hasTerm := false
+			for _, variant := range variants {
+				if strings.Contains(rowLower, strings.ToLower(variant)) {
+					hasTerm = true
+					break
+				}
+			}
+			if !hasTerm {
+				return false
+			}
+		}
+		return true
+	}
+
 	// Parse table structure: find rows where search terms appear, extract time from same row
 	var result string
 	var findTable func(*html.Node)
@@ -684,25 +723,12 @@ func extractTime(htmlContent string, searchTerms []string) string {
 						extractCells(c)
 					}
 					
-					// Check if any cell contains our search terms
-					// Expected format: [Општина, Време, Улице] or similar
+					// Check if row should be extracted (uses smart term matching)
 					if len(cells) >= 3 {
-						// Check if any cell (especially the address cell) contains search terms (case-insensitive)
-						foundMatch := false
-						for _, cell := range cells {
-							cellLower := strings.ToLower(cell)
-							for _, term := range searchTerms {
-								if strings.Contains(cellLower, strings.ToLower(term)) {
-									foundMatch = true
-									break
-								}
-							}
-							if foundMatch {
-								break
-							}
-						}
+						// Get full row text for matching
+						rowText := strings.Join(cells, " ")
 						
-						if foundMatch {
+						if shouldExtractRow(rowText) {
 							// Extract time from the appropriate column (usually column index 1)
 							// Try each cell until we find one with time format
 							for _, cell := range cells {
@@ -735,6 +761,45 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 		return ""
 	}
 
+	// Helper function to check if row should be extracted based on search term logic
+	shouldExtractRow := func(rowText string) bool {
+		rowLower := strings.ToLower(rowText)
+		
+		// For 2 search terms: use special broad/specific logic
+		if len(searchTerms) == 2 {
+			specificTerm := searchTerms[1] // e.g., "Батајница" (specific term)
+			
+			// Check if row contains the specific term (with Cyrillic/Latin variants)
+			specificVariants := getSearchVariants(specificTerm)
+			hasSpecific := false
+			for _, variant := range specificVariants {
+				if strings.Contains(rowLower, strings.ToLower(variant)) {
+					hasSpecific = true
+					break
+				}
+			}
+			
+			// Only extract if specific term is present
+			return hasSpecific
+		}
+		
+		// For 1 or 3+ terms: row must contain ALL terms
+		for _, term := range searchTerms {
+			variants := getSearchVariants(term)
+			hasTerm := false
+			for _, variant := range variants {
+				if strings.Contains(rowLower, strings.ToLower(variant)) {
+					hasTerm = true
+					break
+				}
+			}
+			if !hasTerm {
+				return false
+			}
+		}
+		return true
+	}
+
 	// Parse table structure: find rows where search terms appear, extract address from same row
 	var result string
 	var findTable func(*html.Node)
@@ -761,26 +826,13 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 						extractCells(c)
 					}
 					
-					// Check if any cell contains our search terms
-					// Expected format: [Општина, Време, Улице] or similar
+					// Check if row should be extracted (uses smart term matching)
 					if len(cells) >= 3 {
-						// Check if this row contains any of our search terms (case-insensitive)
-						rowContainsTerm := false
-						for _, cell := range cells {
-							cellLower := strings.ToLower(cell)
-							for _, term := range searchTerms {
-								if strings.Contains(cellLower, strings.ToLower(term)) {
-									rowContainsTerm = true
-									break
-								}
-							}
-							if rowContainsTerm {
-								break
-							}
-						}
+						// Get full row text for matching
+						rowText := strings.Join(cells, " ")
 						
-						// If row matches, return the THIRD column (index 2) which contains the addresses
-						if rowContainsTerm {
+						if shouldExtractRow(rowText) {
+							// Return the THIRD column (index 2) which contains the addresses
 							addressCell := cells[2] // Third column = Улице (addresses)
 							result = strings.TrimSpace(addressCell)
 							return
