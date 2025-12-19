@@ -697,8 +697,8 @@ func extractTime(htmlContent string, searchTerms []string) string {
 		return true
 	}
 
-	// Parse table structure: find rows where search terms appear, extract time from same row
-	var result string
+	// Parse table structure: find ALL rows where search terms appear, collect all times
+	var times []string
 	var findTable func(*html.Node)
 	findTable = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "table" {
@@ -733,8 +733,19 @@ func extractTime(htmlContent string, searchTerms []string) string {
 							// Try each cell until we find one with time format
 							for _, cell := range cells {
 								if isTimeFormat(cell) {
-									result = strings.TrimSpace(cell)
-									return
+									timeStr := strings.TrimSpace(cell)
+									// Add to collection if not already present
+									found := false
+									for _, t := range times {
+										if t == timeStr {
+											found = true
+											break
+										}
+									}
+									if !found {
+										times = append(times, timeStr)
+									}
+									break
 								}
 							}
 						}
@@ -751,7 +762,16 @@ func extractTime(htmlContent string, searchTerms []string) string {
 		}
 	}
 	findTable(doc)
-	return result
+	
+	// Combine all times
+	if len(times) == 0 {
+		return ""
+	}
+	if len(times) == 1 {
+		return times[0]
+	}
+	// Multiple times: join with comma
+	return strings.Join(times, ", ")
 }
 
 // extractAddress extracts the address information from HTML table
@@ -800,8 +820,8 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 		return true
 	}
 
-	// Parse table structure: find rows where search terms appear, extract address from same row
-	var result string
+	// Parse table structure: find ALL rows where search terms appear, collect all addresses
+	var addresses []string
 	var findTable func(*html.Node)
 	findTable = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "table" {
@@ -832,10 +852,12 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 						rowText := strings.Join(cells, " ")
 						
 						if shouldExtractRow(rowText) {
-							// Return the THIRD column (index 2) which contains the addresses
+							// Get the THIRD column (index 2) which contains the addresses
 							addressCell := cells[2] // Third column = Улице (addresses)
-							result = strings.TrimSpace(addressCell)
-							return
+							addressStr := strings.TrimSpace(addressCell)
+							if addressStr != "" {
+								addresses = append(addresses, addressStr)
+							}
 						}
 					}
 				}
@@ -850,7 +872,16 @@ func extractAddress(htmlContent string, searchTerms []string) string {
 		}
 	}
 	findTable(doc)
-	return result
+	
+	// Combine all addresses
+	if len(addresses) == 0 {
+		return ""
+	}
+	if len(addresses) == 1 {
+		return addresses[0]
+	}
+	// Multiple addresses: join with semicolon for better readability
+	return strings.Join(addresses, "; ")
 }
 
 // getTextContent extracts all text content from a node and its children
